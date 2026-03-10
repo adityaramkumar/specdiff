@@ -2,12 +2,13 @@ from __future__ import annotations
 
 import shutil
 import subprocess
+from datetime import datetime, timezone
 from pathlib import Path
 
 import click
 
 from specanopy import hashmap
-from specanopy.generator import generate
+from specanopy.agents.swarm import run_swarm
 from specanopy.graph import SpecGraph
 from specanopy.types import HashMap, SpecanopyConfig, SpecNode
 
@@ -66,16 +67,44 @@ def run_tests(config: SpecanopyConfig) -> tuple[bool, str]:
     return result.returncode == 0, output
 
 
-def execute_cascade(
+TRACEABILITY_TEMPLATE = (
+    "# generated_from: {node_id}\n"
+    "# spec_hash: {spec_hash}\n"
+    "# generated_at: {timestamp}\n"
+    "# agent: {agent}\n"
+)
+
+
+def _write_swarm_files(
+    files: dict[str, str],
+    output_dir: str,
+    node: SpecNode,
+    agent_name: str,
+) -> list[str]:
+    """Write generated files to disk with traceability headers."""
+    header = TRACEABILITY_TEMPLATE.format(
+        node_id=node.id,
+        spec_hash=node.hash,
+        timestamp=datetime.now(timezone.utc).isoformat(),
+        agent=agent_name,
+    )
+    written: list[str] = []
+    for rel_path, contents in files.items():
+        full_path = Path(output_dir) / rel_path
+        full_path.parent.mkdir(parents=True, exist_ok=True)
+        full_path.write_text(header + "\n" + contents, "utf-8")
+        written.append(str(full_path))
+    return written
+
+
+def execute_swarm_cascade(
     ordered_nodes: list[SpecNode],
     config: SpecanopyConfig,
     map: HashMap,
     graph: SpecGraph,
     specs_dir: Path,
 ) -> bool:
-    """Build a batch of nodes: backup all -> generate all -> test once -> commit/rollback all."""
-    # Pre-flight: ensure existing tests pass before we regenerate anything.
-    # If the suite is already broken, regeneration failures would be misleading.
+    """Build nodes using the multi-agent swarm pipeline."""
     if config.test_command:
         baseline_ok, _ = run_tests(config)
         if not baseline_ok:
@@ -95,16 +124,26 @@ def execute_cascade(
 
     all_written: dict[str, list[str]] = {}
     for node in ordered_nodes:
-        click.echo(f"  [{node.id}] generating...")
+        click.echo(f"  [{node.id}] running swarm...")
         dep_specs = [graph.nodes[d] for d in node.depends_on if d in graph.nodes]
         try:
-            written = generate(node, config, dep_specs=dep_specs)
+            result = run_swarm(node, config, specs_dir, dep_specs=dep_specs)
         except Exception as exc:
-            click.echo(f"  [{node.id}] generation failed: {exc}", err=True)
+            click.echo(f"  [{node.id}] swarm failed: {exc}", err=True)
             all_restore = [f for files in all_written.values() for f in files]
             restore(all_restore + all_prev_files, specs_dir)
             return False
+
+        written = _write_swarm_files(
+            result.generated_files, config.output_dir, node, "implementation-agent"
+        )
+        written += _write_swarm_files(
+            result.generated_tests, config.output_dir, node, "testing-agent"
+        )
         all_written[node.id] = written
+
+        if not result.review_passed:
+            click.echo(f"  [{node.id}] review warning: {result.review_feedback}")
         click.echo(f"  [{node.id}] done.")
 
     passed, _ = run_tests(config)

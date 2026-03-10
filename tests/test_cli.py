@@ -7,8 +7,9 @@ from unittest.mock import patch
 
 from click.testing import CliRunner
 
+from specanopy.agents.swarm import REQUIRED_SKILLS
 from specanopy.cli import cli
-from specanopy.types import ReviewResult
+from specanopy.types import FilePlan, ReviewResult, SwarmResult
 
 
 def _write_spec(
@@ -29,27 +30,34 @@ def _write_spec(
 
 
 def _setup_project(tmp_path: Path, specs: list[dict], *, with_skill: bool = False) -> Path:
-    """Create a minimal project with .specanopy/config.yaml and spec files."""
+    """Create a minimal project with .specanopy/config.yaml, skill files, and spec files."""
     specanopy_dir = tmp_path / ".specanopy"
     specanopy_dir.mkdir()
     (specanopy_dir / "config.yaml").write_text(
         "model: gemini-3.1-flash-lite-preview\noutput_dir: src\nspecs_dir: .specanopy\n"
     )
+
+    skills_dir = specanopy_dir / "skills"
+    skills_dir.mkdir()
+    for name in REQUIRED_SKILLS:
+        (skills_dir / f"{name}.skill.md").write_text(f"Skill for {name}")
+    if with_skill:
+        (skills_dir / "spec-eval.skill.md").write_text("## Role\nYou review specs.\n")
+
     for s in specs:
         _write_spec(specanopy_dir, s["path"], s["id"], s.get("depends_on"))
-    if with_skill:
-        skills_dir = specanopy_dir / "skills"
-        skills_dir.mkdir()
-        (skills_dir / "spec-eval.skill.md").write_text("## Role\nYou review specs.\n")
     return tmp_path
 
 
-def _mock_generate(node, config, dep_specs=None):
-    """Fake generator that writes a single file per node."""
-    out = Path(config.output_dir) / f"{node.id.replace('/', '_')}.py"
-    out.parent.mkdir(parents=True, exist_ok=True)
-    out.write_text(f"# generated from {node.id}\n")
-    return [str(out)]
+def _mock_swarm_result(node, config, specs_dir, dep_specs=None):
+    """Fake swarm that returns a SwarmResult writing one file per node."""
+    return SwarmResult(
+        file_plan=FilePlan(files={f"{node.id.replace('/', '_')}.py": "impl"}),
+        generated_files={f"{node.id.replace('/', '_')}.py": f"# generated from {node.id}\n"},
+        generated_tests={},
+        review_passed=True,
+        review_feedback="All criteria met.",
+    )
 
 
 class TestStatus:
@@ -65,9 +73,7 @@ class TestStatus:
     def test_shows_new(self, tmp_path):
         proj = _setup_project(
             tmp_path,
-            [
-                {"path": "behaviors/auth/login.spec.md", "id": "auth/login"},
-            ],
+            [{"path": "behaviors/auth/login.spec.md", "id": "auth/login"}],
         )
         runner = CliRunner()
         with runner.isolated_filesystem(temp_dir=tmp_path):
@@ -79,13 +85,11 @@ class TestStatus:
 
 
 class TestBuild:
-    @patch("specanopy.runner.generate", side_effect=_mock_generate)
-    def test_updates_hashmap(self, mock_gen, tmp_path):
+    @patch("specanopy.runner.run_swarm", side_effect=_mock_swarm_result)
+    def test_updates_hashmap(self, mock_swarm, tmp_path):
         proj = _setup_project(
             tmp_path,
-            [
-                {"path": "behaviors/auth/login.spec.md", "id": "auth/login"},
-            ],
+            [{"path": "behaviors/auth/login.spec.md", "id": "auth/login"}],
         )
         runner = CliRunner()
         with runner.isolated_filesystem(temp_dir=tmp_path):
@@ -100,13 +104,11 @@ class TestBuild:
         data = json.loads(hm_path.read_text())
         assert "auth/login" in data
 
-    @patch("specanopy.runner.generate", side_effect=_mock_generate)
-    def test_idempotent(self, mock_gen, tmp_path):
+    @patch("specanopy.runner.run_swarm", side_effect=_mock_swarm_result)
+    def test_idempotent(self, mock_swarm, tmp_path):
         proj = _setup_project(
             tmp_path,
-            [
-                {"path": "behaviors/auth/login.spec.md", "id": "auth/login"},
-            ],
+            [{"path": "behaviors/auth/login.spec.md", "id": "auth/login"}],
         )
         runner = CliRunner()
         with runner.isolated_filesystem(temp_dir=tmp_path):
@@ -155,11 +157,8 @@ class TestImpact:
     def test_up_to_date(self, tmp_path):
         proj = _setup_project(
             tmp_path,
-            [
-                {"path": "behaviors/auth/login.spec.md", "id": "auth/login"},
-            ],
+            [{"path": "behaviors/auth/login.spec.md", "id": "auth/login"}],
         )
-        # Pre-populate hashmap so node is current
         from specanopy.parser import parse_spec_file
 
         node = parse_spec_file(proj / ".specanopy" / "behaviors" / "auth" / "login.spec.md")
@@ -195,7 +194,6 @@ class TestReview:
             [{"path": "behaviors/login.spec.md", "id": "auth/login"}],
             with_skill=True,
         )
-        # Write spec as draft so review picks it up
         _write_spec(
             proj / ".specanopy",
             "behaviors/login.spec.md",

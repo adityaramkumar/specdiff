@@ -12,7 +12,7 @@ from specanopy import hashmap
 from specanopy.agents.spec_agent import review_spec
 from specanopy.graph import build_graph, cascade, impact_summary
 from specanopy.parser import discover_specs
-from specanopy.runner import execute_cascade
+from specanopy.runner import execute_swarm_cascade
 from specanopy.skills import load_skill
 from specanopy.types import SpecanopyConfig
 
@@ -112,7 +112,7 @@ def build(node_id: str | None) -> None:
 
     click.echo(f"Building {len(ordered_nodes)} node(s)...\n")
 
-    ok = execute_cascade(ordered_nodes, config, map, graph, specs_dir)
+    ok = execute_swarm_cascade(ordered_nodes, config, map, graph, specs_dir)
     hashmap.save(specs_dir, map)
 
     if not ok:

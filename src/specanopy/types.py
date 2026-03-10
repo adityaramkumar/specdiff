@@ -63,3 +63,17 @@ class ReviewResult:
     passed: bool
     feedback: str
     proposed_revision: str | None = None
+
+
+@dataclass
+class FilePlan:
+    files: dict[str, str] = field(default_factory=dict)
+
+
+@dataclass
+class SwarmResult:
+    file_plan: FilePlan
+    generated_files: dict[str, str] = field(default_factory=dict)
+    generated_tests: dict[str, str] = field(default_factory=dict)
+    review_passed: bool = True
+    review_feedback: str = ""
