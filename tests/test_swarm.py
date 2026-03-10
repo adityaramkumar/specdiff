@@ -118,3 +118,17 @@ class TestRunSwarm:
 
         with pytest.raises(ValueError, match="Swarm did not return outputs for: review"):
             run_swarm(_make_node(), SpecanopyConfig(), specs_dir)
+
+    @patch("specanopy.agents.swarm._run_pipeline")
+    def test_review_feedback_list_is_normalized(self, mock_pipeline, tmp_path):
+        specs_dir = _setup_skills_dir(tmp_path)
+        mock_pipeline.return_value = {
+            "file_plan": "{}",
+            "generated_code": "{}",
+            "generated_tests": "{}",
+            "review_result": json.dumps({"passed": False, "feedback": ["a", "b"]}),
+        }
+
+        result = run_swarm(_make_node(), SpecanopyConfig(), specs_dir)
+        assert result.review_passed is False
+        assert result.review_feedback == "a\nb"

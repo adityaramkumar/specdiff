@@ -15,3 +15,5 @@ is a short description of that file's purpose. No code, no explanation -- just t
 3. Name files clearly so their purpose is obvious from the path.
 4. Include test files in the plan alongside implementation files.
 5. If the spec depends on contracts, ensure interfaces match the contract shapes exactly.
+6. Prefer the smallest file plan that can fully satisfy the spec.
+7. Do not invent placeholder, orchestration, or wrapper files unless the spec requires observable behavior for them.

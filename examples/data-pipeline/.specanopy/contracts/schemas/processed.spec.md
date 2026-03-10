@@ -28,9 +28,13 @@ status: approved
 ### Output format
 - Partitioned by date: `output/{date}/events.ndjson`
 - Each partition file contains events sorted by `timestamp_utc` ascending
-- Maximum partition file size: 256 MB (split into numbered files if exceeded)
+- Maximum partition file size: 256 MB
+- If a partition exceeds 256 MB, continue writing into `output/{date}/events_1.ndjson`, `events_2.ndjson`, and so on
 
 ### Session assignment rules
 - Events from the same `user_id` within 30 minutes of each other belong to the same session
-- Anonymous events (`user_id` is null) each get their own unique session
-- Session IDs are deterministic UUIDs derived from `user_id + session_start_timestamp`
+- Once a session is opened for a non-anonymous user, every later event within the 30-minute window must reuse the exact same `session_id`
+- A new deterministic `session_id` is created only when the gap from the previous event for that user is greater than 30 minutes
+- Anonymous events (`user_id` is null) each get their own unique session UUID and are not required to be deterministic across runs
+- Non-anonymous session IDs are deterministic UUIDs derived from `user_id + session_start_timestamp`
+- If `timestamp_utc` is not a valid ISO 8601 UTC timestamp, raise `ValueError("invalid_timestamp_utc")` and do not write the event

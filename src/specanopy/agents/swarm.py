@@ -82,6 +82,14 @@ def _validate_string_map(data: dict, label: str) -> dict[str, str]:
     return data
 
 
+def _normalize_review_feedback(feedback: object) -> str:
+    if isinstance(feedback, str):
+        return feedback
+    if isinstance(feedback, list) and all(isinstance(item, str) for item in feedback):
+        return "\n".join(feedback)
+    raise ValueError("Review agent must return a string 'feedback' field.")
+
+
 async def _run_pipeline(pipeline: SequentialAgent, prompt: str) -> dict[str, str]:
     """Run the ADK pipeline and collect output_key values from session state."""
     runner = InMemoryRunner(agent=pipeline, app_name="specanopy")
@@ -156,13 +164,11 @@ def run_swarm(
     review_data = _extract_json_object(outputs["review_result"], "Review")
     if not isinstance(review_data.get("passed"), bool):
         raise ValueError("Review agent must return a boolean 'passed' field.")
-    if not isinstance(review_data.get("feedback", ""), str):
-        raise ValueError("Review agent must return a string 'feedback' field.")
 
     return SwarmResult(
         file_plan=FilePlan(files=file_plan_data),
         generated_files=generated_files,
         generated_tests=generated_tests,
         review_passed=bool(review_data.get("passed", True)),
-        review_feedback=review_data.get("feedback", ""),
+        review_feedback=_normalize_review_feedback(review_data.get("feedback", "")),
     )

@@ -1,6 +1,6 @@
 {
   "contracts/api/users": {
-    "spec_hash": "5cf5cc538d1b81c8c474dcd47c648ab4c75be2232eb84c596a9c8849e1842678",
+    "spec_hash": "623765be2b42455f0f1136b616ae54f15c1a70076ed1ffacea8d3919a0cc072d",
     "generated_files": [
       "src/domain/user/user.entity.ts",
       "src/domain/user/user.repository.interface.ts",
@@ -14,7 +14,7 @@
     "generated_at": "2026-03-10T09:00:31.849907+00:00"
   },
   "behaviors/auth/login": {
-    "spec_hash": "00335c53ca3b6c799e009972b346695606d4fcc3a9ac7f85e4fc5ef7179f7657",
+    "spec_hash": "6ef44ccca1fdd47eeb6fc997de4fe55770e057ebf1548c9da7bdaa3565d448fc",
     "generated_files": [
       "src/auth/domain/auth.types.ts",
       "src/auth/domain/login.service.ts",
@@ -26,7 +26,7 @@
     "generated_at": "2026-03-10T09:00:31.849970+00:00"
   },
   "behaviors/auth/signup": {
-    "spec_hash": "76de4dd5faf70d2285d59b7b3320eddbd2b2bb65e458c3cc5573b304b7c759d4",
+    "spec_hash": "5f98371bbd0a8e14fceaaed58e8c423bae5ab7d4b60f028b978b8c4b66ee9c16",
     "generated_files": [
       "src/domain/signup/signup_repository.interface.ts",
       "src/domain/signup/signup_validator.ts",
@@ -37,7 +37,7 @@
     "generated_at": "2026-03-10T09:00:31.849980+00:00"
   },
   "behaviors/users/profile": {
-    "spec_hash": "d1f76ac9b12b1560185010f04ecae9a79ca4e17e78accdbabc8ee582b60bbd58",
+    "spec_hash": "a25b2262d0a818a63a621dd337eaaba75be4ca24b3d5ca3c08360664e5cc07a7",
     "generated_files": [
       "src/domain/user.ts",
       "src/domain/user.repository.ts",

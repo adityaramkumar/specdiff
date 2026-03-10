@@ -151,6 +151,20 @@ def execute_swarm_cascade(
             restore(all_restore + all_prev_files, specs_dir)
             return False
 
+        if result.generated_tests and not config.test_command:
+            click.echo(
+                f"  [{node.id}] generated tests but no test_command is configured.",
+                err=True,
+            )
+            click.echo(
+                "  Set test_command in .specanopy/config.yaml so Specanopy can run a baseline "
+                "and verify regenerated output.",
+                err=True,
+            )
+            all_restore = [f for files in all_written.values() for f in files]
+            restore(all_restore + all_prev_files, specs_dir)
+            return False
+
         if not result.review_passed:
             click.echo(f"  [{node.id}] review failed: {result.review_feedback}", err=True)
             all_restore = [f for files in all_written.values() for f in files]

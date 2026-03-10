@@ -70,6 +70,16 @@ def _mock_swarm_result_ts(node, config, specs_dir, dep_specs=None):
     )
 
 
+def _mock_swarm_result_with_tests(node, config, specs_dir, dep_specs=None):
+    return SwarmResult(
+        file_plan=FilePlan(files={"auth/login.ts": "impl", "tests/auth/login.test.ts": "test"}),
+        generated_files={"auth/login.ts": "export function login() {}\n"},
+        generated_tests={"tests/auth/login.test.ts": "test('login', () => {})\n"},
+        review_passed=True,
+        review_feedback="All criteria met.",
+    )
+
+
 def _mock_swarm_review_fail(node, config, specs_dir, dep_specs=None):
     return SwarmResult(
         file_plan=FilePlan(files={"auth/login.ts": "impl"}),
@@ -168,6 +178,23 @@ class TestBuild:
 
         assert result.exit_code == 1
         assert "review failed" in result.output
+        hm_path = proj / ".specanopy" / "hash-map.json"
+        data = json.loads(hm_path.read_text())
+        assert "auth/login" not in data
+
+    @patch("specanopy.runner.run_swarm", side_effect=_mock_swarm_result_with_tests)
+    def test_fails_build_when_generated_tests_have_no_test_command(self, mock_swarm, tmp_path):
+        proj = _setup_project(
+            tmp_path,
+            [{"path": "behaviors/auth/login.spec.md", "id": "auth/login"}],
+        )
+        runner = CliRunner()
+        with runner.isolated_filesystem(temp_dir=tmp_path):
+            os.chdir(proj)
+            result = runner.invoke(cli, ["build"])
+
+        assert result.exit_code == 1
+        assert "generated tests but no test_command is configured" in result.output
         hm_path = proj / ".specanopy" / "hash-map.json"
         data = json.loads(hm_path.read_text())
         assert "auth/login" not in data

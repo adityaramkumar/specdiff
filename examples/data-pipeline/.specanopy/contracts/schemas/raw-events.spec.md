@@ -31,4 +31,8 @@ status: approved
 - `user_id` if present must be a valid UUID v4
 - `properties` must be a JSON object (not array, not null)
 - `source` must be one of the allowed values
+- Missing required fields are validation failures, not parser crashes
 - Events failing validation are written to a dead-letter file, not discarded silently
+- Malformed JSON lines are treated as invalid events and must be routed to dead-letter handling
+- Events exceeding 64 KB are treated as invalid events and must be routed to dead-letter handling
+- Parsing and validation helpers must report these failures back to the caller instead of terminating the process

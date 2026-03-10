@@ -15,3 +15,4 @@ Reply with ONLY a JSON object with these fields:
 3. Flag any code paths that implement behavior not described in the spec.
 4. Flag any hardcoded values that should come from the spec but don't.
 5. Do not evaluate code quality or style -- only spec compliance.
+6. Do not flag helper modules or utility functions as scope creep if they only support behavior explicitly required by the spec and add no new observable behavior.
