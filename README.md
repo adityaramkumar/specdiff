@@ -1,5 +1,7 @@
 # Specanopy
 
+[![CI](https://github.com/adityaramkumar/specanopy/actions/workflows/ci.yml/badge.svg)](https://github.com/adityaramkumar/specanopy/actions/workflows/ci.yml)
+
 > Specanopy turns software development into a compilation problem.
 
 ```
