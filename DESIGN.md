@@ -295,7 +295,7 @@ When English is more ambiguous than code, use code. The spec is the source of tr
 
 A complex validation rule, a precise algorithm, or an exact formula is legitimately better expressed as a code snippet than as a paragraph of English. Including it directly in the spec keeps it human-authored, versioned, and traceable - without forcing the implementation agent to interpret vague language.
 
-```markdown
+````markdown
 ## Acceptance Criteria
 
 - Password must pass the following strength check:
@@ -307,7 +307,7 @@ A complex validation rule, a precise algorithm, or an exact formula is legitimat
           and re.search(r'[^a-zA-Z0-9]', password))
   ```
 - Weak passwords return HTTP 422 with `{ "error": "password_too_weak" }`
-```
+````
 
 The implementation agent reproduces the snippet faithfully; it does not reinterpret it. The system is dogmatic about intent, not about English.
 
