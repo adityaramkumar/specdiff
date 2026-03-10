@@ -1,6 +1,8 @@
 # Specanopy
 
 [![CI](https://github.com/adityaramkumar/specanopy/actions/workflows/ci.yml/badge.svg)](https://github.com/adityaramkumar/specanopy/actions/workflows/ci.yml)
+[![Design Doc](https://img.shields.io/badge/docs-Design-blue)](DESIGN.md)
+[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
 Spec-driven code generation. The spec is the source of truth, code is a build artifact.
 
