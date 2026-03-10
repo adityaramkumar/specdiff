@@ -48,15 +48,30 @@ class TestParseSpecFile:
         with pytest.raises(ValueError, match="missing required frontmatter fields.*id"):
             parse_spec_file(f)
 
-    def test_hash_stability(self, tmp_path):
-        """Same body produces the same hash regardless of frontmatter changes."""
+    def test_hash_changes_with_graph_shaping_frontmatter(self, tmp_path):
+        body = "\n## Same body\n\nIdentical content.\n"
+
+        f1 = tmp_path / "v1.spec.md"
+        f1.write_text(
+            f"---\nid: a\nversion: '1.0.0'\nstatus: draft\ndepends_on:\n  - contracts/a\n---\n{body}"
+        )
+
+        f2 = tmp_path / "v2.spec.md"
+        f2.write_text(
+            f"---\nid: a\nversion: '1.0.0'\nstatus: draft\ndepends_on:\n  - contracts/b\n---\n{body}"
+        )
+
+        assert parse_spec_file(f1).hash != parse_spec_file(f2).hash
+
+    def test_hash_ignores_status_only(self, tmp_path):
+        """Status changes should not force a rebuild on their own."""
         body = "\n## Same body\n\nIdentical content.\n"
 
         f1 = tmp_path / "v1.spec.md"
         f1.write_text(f"---\nid: a\nversion: '1.0.0'\nstatus: draft\n---\n{body}")
 
         f2 = tmp_path / "v2.spec.md"
-        f2.write_text(f"---\nid: a\nversion: '2.0.0'\nstatus: approved\n---\n{body}")
+        f2.write_text(f"---\nid: a\nversion: '1.0.0'\nstatus: approved\n---\n{body}")
 
         assert parse_spec_file(f1).hash == parse_spec_file(f2).hash
 

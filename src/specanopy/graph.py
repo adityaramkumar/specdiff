@@ -96,6 +96,26 @@ def _collect_downstream(graph: SpecGraph, start_ids: set[str]) -> set[str]:
     return visited
 
 
+def _collect_stale_upstream(
+    graph: SpecGraph,
+    start_ids: set[str],
+    stale_ids: set[str],
+) -> set[str]:
+    """Walk upstream transitively to include stale dependencies."""
+    visited: set[str] = set()
+    queue = deque(start_ids)
+
+    while queue:
+        nid = queue.popleft()
+        for dep_id in graph.nodes[nid].depends_on:
+            if dep_id not in stale_ids or dep_id in visited:
+                continue
+            visited.add(dep_id)
+            queue.append(dep_id)
+
+    return visited
+
+
 def cascade(
     graph: SpecGraph,
     changed_ids: list[str],
@@ -109,10 +129,7 @@ def cascade(
     all_ids = set(changed_ids)
 
     if stale_ids is not None:
-        for nid in list(all_ids):
-            for dep_id in graph.nodes[nid].depends_on:
-                if dep_id in stale_ids:
-                    all_ids.add(dep_id)
+        all_ids |= _collect_stale_upstream(graph, all_ids, stale_ids)
 
     downstream = _collect_downstream(graph, all_ids)
     all_ids |= downstream

@@ -1,6 +1,8 @@
 # Specanopy - Design
 
 > Specanopy turns software development into a compilation problem.
+>
+> Note: this document describes the target architecture. The current implementation already covers spec parsing, dependency graphs, incremental rebuild tracking, `build`/`status`/`impact`/`review` commands, a basic architect -> implementation/testing -> review swarm, and rollback on failing tests. Independent test specs, reconciler/migration agents, reverse-patch debugging, version-history edges, and user-defined agents are still future work.
 
 ```
 spec → compile → system

@@ -1,8 +1,7 @@
-# generated_from: contracts/schemas/processed
-# spec_hash: 363cd030c1920e3fa5120a35d07ebe130a62a4e292bbc5d4b4f784afb869fbf9
-# generated_at: 2026-03-10T09:07:01.363590+00:00
-# agent: testing-agent
-
+// generated_from: contracts/schemas/processed
+// spec_hash: 363cd030c1920e3fa5120a35d07ebe130a62a4e292bbc5d4b4f784afb869fbf9
+// generated_at: 2026-03-10T09:07:01.363590+00:00
+// agent: testing-agent
 describe('Session Assignment Logic', () => {
   test('should group events within 30 minutes under same user as one session', () => {
     const event1 = { user_id: 'u1', timestamp_utc: '2023-10-27T10:00:00Z' };

@@ -1,8 +1,7 @@
-# generated_from: contracts/ui/components
-# spec_hash: 12e101232da0b497b76851531c4e21348b66f81335de4f73ff49135f4ce465f3
-# generated_at: 2026-03-10T09:05:17.962011+00:00
-# agent: testing-agent
-
+// generated_from: contracts/ui/components
+// spec_hash: 12e101232da0b497b76851531c4e21348b66f81335de4f73ff49135f4ce465f3
+// generated_at: 2026-03-10T09:05:17.962011+00:00
+// agent: testing-agent
 import { render, screen } from '@testing-library/react';
 import { TodoList } from '../../components/TodoList/TodoList';
 

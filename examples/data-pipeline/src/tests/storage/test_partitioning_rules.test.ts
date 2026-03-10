@@ -1,8 +1,7 @@
-# generated_from: contracts/schemas/processed
-# spec_hash: 363cd030c1920e3fa5120a35d07ebe130a62a4e292bbc5d4b4f784afb869fbf9
-# generated_at: 2026-03-10T09:07:01.363590+00:00
-# agent: testing-agent
-
+// generated_from: contracts/schemas/processed
+// spec_hash: 363cd030c1920e3fa5120a35d07ebe130a62a4e292bbc5d4b4f784afb869fbf9
+// generated_at: 2026-03-10T09:07:01.363590+00:00
+// agent: testing-agent
 import { getEventsByDate } from '../infrastructure/storage/file_partitioner';
 
 describe('Event Storage Partitioning', () => {

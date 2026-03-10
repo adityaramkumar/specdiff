@@ -65,6 +65,23 @@ def _build_prompt(node: SpecNode, dep_specs: list[SpecNode] | None = None) -> st
     )
 
 
+def _extract_json_object(raw_output: str, label: str) -> dict:
+    try:
+        data = extract_json(raw_output)
+    except Exception as exc:
+        raise ValueError(f"{label} agent returned invalid JSON.") from exc
+
+    if not isinstance(data, dict):
+        raise ValueError(f"{label} agent must return a JSON object.")
+    return data
+
+
+def _validate_string_map(data: dict, label: str) -> dict[str, str]:
+    if not all(isinstance(k, str) and isinstance(v, str) for k, v in data.items()):
+        raise ValueError(f"{label} agent must return a string-to-string JSON object.")
+    return data
+
+
 async def _run_pipeline(pipeline: SequentialAgent, prompt: str) -> dict[str, str]:
     """Run the ADK pipeline and collect output_key values from session state."""
     runner = InMemoryRunner(agent=pipeline, app_name="specanopy")
@@ -113,30 +130,34 @@ def run_swarm(
     prompt = _build_prompt(node, dep_specs)
     outputs = asyncio.run(_run_pipeline(pipeline, prompt))
 
-    file_plan_raw = outputs.get("file_plan", "{}")
-    generated_code_raw = outputs.get("generated_code", "{}")
-    generated_tests_raw = outputs.get("generated_tests", "{}")
-    review_raw = outputs.get("review_result", '{"passed": true, "feedback": ""}')
+    required_outputs = {
+        "file_plan": "architect",
+        "generated_code": "implementation",
+        "generated_tests": "testing",
+        "review_result": "review",
+    }
+    missing_outputs = [key for key in required_outputs if key not in outputs]
+    if missing_outputs:
+        missing_agents = ", ".join(required_outputs[key] for key in missing_outputs)
+        raise ValueError(f"Swarm did not return outputs for: {missing_agents}.")
 
-    try:
-        file_plan_data = extract_json(file_plan_raw)
-    except Exception:
-        file_plan_data = {}
-
-    try:
-        generated_files = extract_json(generated_code_raw)
-    except Exception:
-        generated_files = {}
-
-    try:
-        generated_tests = extract_json(generated_tests_raw)
-    except Exception:
-        generated_tests = {}
-
-    try:
-        review_data = extract_json(review_raw)
-    except Exception:
-        review_data = {"passed": True, "feedback": ""}
+    file_plan_data = _validate_string_map(
+        _extract_json_object(outputs["file_plan"], "Architect"),
+        "Architect",
+    )
+    generated_files = _validate_string_map(
+        _extract_json_object(outputs["generated_code"], "Implementation"),
+        "Implementation",
+    )
+    generated_tests = _validate_string_map(
+        _extract_json_object(outputs["generated_tests"], "Testing"),
+        "Testing",
+    )
+    review_data = _extract_json_object(outputs["review_result"], "Review")
+    if not isinstance(review_data.get("passed"), bool):
+        raise ValueError("Review agent must return a boolean 'passed' field.")
+    if not isinstance(review_data.get("feedback", ""), str):
+        raise ValueError("Review agent must return a string 'feedback' field.")
 
     return SwarmResult(
         file_plan=FilePlan(files=file_plan_data),

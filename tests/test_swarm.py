@@ -93,3 +93,28 @@ class TestRunSwarm:
 
         with pytest.raises(FileNotFoundError, match="Missing required skill files"):
             run_swarm(_make_node(), SpecanopyConfig(), specs_dir)
+
+    @patch("specanopy.agents.swarm._run_pipeline")
+    def test_invalid_json_fails(self, mock_pipeline, tmp_path):
+        specs_dir = _setup_skills_dir(tmp_path)
+        mock_pipeline.return_value = {
+            "file_plan": "not json",
+            "generated_code": "{}",
+            "generated_tests": "{}",
+            "review_result": json.dumps({"passed": True, "feedback": "ok"}),
+        }
+
+        with pytest.raises(ValueError, match="Architect agent returned invalid JSON"):
+            run_swarm(_make_node(), SpecanopyConfig(), specs_dir)
+
+    @patch("specanopy.agents.swarm._run_pipeline")
+    def test_missing_review_output_fails(self, mock_pipeline, tmp_path):
+        specs_dir = _setup_skills_dir(tmp_path)
+        mock_pipeline.return_value = {
+            "file_plan": "{}",
+            "generated_code": "{}",
+            "generated_tests": "{}",
+        }
+
+        with pytest.raises(ValueError, match="Swarm did not return outputs for: review"):
+            run_swarm(_make_node(), SpecanopyConfig(), specs_dir)

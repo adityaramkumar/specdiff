@@ -1,8 +1,7 @@
-# generated_from: behaviors/validate
-# spec_hash: 0064fbd16dce3d193fa5a3f43ea798477bf69f8dd2877c90afaadad9a03530fc
-# generated_at: 2026-03-10T09:02:50.481714+00:00
-# agent: implementation-agent
-
+// generated_from: behaviors/validate
+// spec_hash: 0064fbd16dce3d193fa5a3f43ea798477bf69f8dd2877c90afaadad9a03530fc
+// generated_at: 2026-03-10T09:02:50.481714+00:00
+// agent: implementation-agent
 import { validate } from '../../domain/validator';
 
 export async function runValidate(filePath: string) {

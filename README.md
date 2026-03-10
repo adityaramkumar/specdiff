@@ -27,6 +27,10 @@ your-project/
   .specanopy/
     config.yaml
     skills/
+      architect.skill.md
+      implementation.skill.md
+      testing.skill.md
+      review.skill.md
       spec-eval.skill.md
     contracts/
       api/users.spec.md
@@ -61,7 +65,7 @@ Everything below the frontmatter is your spec -- prose, code snippets, whatever 
 
 ## Examples
 
-Four complete example projects in [`examples/`](examples/), each with specs and generated output:
+Four generated example snapshots in [`examples/`](examples/), each with specs and generated output:
 
 | Example | What it demonstrates |
 |---|---|
@@ -69,6 +73,8 @@ Four complete example projects in [`examples/`](examples/), each with specs and 
 | [`cli-tool/`](examples/cli-tool) | CSV/JSON file converter. Non-web use case, input/output contracts, code-in-spec. |
 | [`fullstack-todo/`](examples/fullstack-todo) | Todo app with backend + frontend. Cross-layer dependencies, component specs. |
 | [`data-pipeline/`](examples/data-pipeline) | Event processing ETL. Sequential pipeline specs, schema contracts, multi-step dependencies. |
+
+These examples are primarily for inspecting generated structure and spec relationships. They are not currently packaged as fully runnable standalone apps.
 
 Skill files are shared across examples via symlinks from each example's `.specanopy/skills/` to `examples/shared-skills/`.
 
@@ -154,7 +160,7 @@ If a spec fails, a suggested revision is written to `.specanopy/proposed/` for y
 5. Every generated file gets a traceability header linking it back to its spec
 6. If tests fail after generation, all files are rolled back to their previous state
 
-For the full design vision -- the multi-agent swarm, reconciler, migration agent, and more -- see [DESIGN.md](DESIGN.md).
+For the broader design vision and planned extensions beyond the current implementation, see [DESIGN.md](DESIGN.md).
 
 ## Development
 

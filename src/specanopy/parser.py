@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 from pathlib import Path
 
 import frontmatter
@@ -17,12 +18,17 @@ def parse_spec_file(file_path: Path) -> SpecNode:
     if missing:
         raise ValueError(f"{file_path}: missing required frontmatter fields: {', '.join(missing)}")
 
-    # Hash the body only — NOT the frontmatter. The frontmatter contains the
-    # hash field itself and mutable metadata like status, so including it would
-    # create a circular dependency (changing status would change the hash, which
-    # would change the frontmatter, which would change the hash again).
+    # Status is a workflow flag that changes during review, so exclude it from
+    # staleness checks. The rest of the frontmatter shapes the spec graph and
+    # generation inputs, so it must affect the hash.
     body = post.content
-    content_hash = hashlib.sha256(body.encode("utf-8")).hexdigest()
+    tracked_meta = {k: v for k, v in meta.items() if k not in {"status", "hash"}}
+    payload = json.dumps(
+        {"meta": tracked_meta, "content": body},
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+    content_hash = hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
     return SpecNode(
         id=meta["id"],

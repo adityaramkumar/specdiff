@@ -1,8 +1,7 @@
-# generated_from: behaviors/transform
-# spec_hash: 0c693b22255ee8ba03d47bf5d7d244de4eb44cb5bf9c27d0585f3b66550a2eca
-# generated_at: 2026-03-10T09:07:27.851408+00:00
-# agent: implementation-agent
-
+// generated_from: behaviors/transform
+// spec_hash: 0c693b22255ee8ba03d47bf5d7d244de4eb44cb5bf9c27d0585f3b66550a2eca
+// generated_at: 2026-03-10T09:07:27.851408+00:00
+// agent: implementation-agent
 function normalize(event) {
   const dateObj = new Date(event.timestamp);
   const timestamp_utc = dateObj.toISOString().split('.')[0] + 'Z';

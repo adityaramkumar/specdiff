@@ -154,6 +154,16 @@ class TestCascade:
         assert set(result) == {"a", "b"}
         assert result.index("a") < result.index("b")
 
+    def test_includes_transitive_stale_upstream_deps(self):
+        a = _make_node("a")
+        b = _make_node("b", depends_on=["a"])
+        c = _make_node("c", depends_on=["b"])
+        graph = build_graph([a, b, c])
+
+        result = cascade(graph, ["c"], stale_ids={"a", "b", "c"})
+        assert set(result) == {"a", "b", "c"}
+        assert result.index("a") < result.index("b") < result.index("c")
+
 
 class TestImpactSummary:
     def test_structure(self):

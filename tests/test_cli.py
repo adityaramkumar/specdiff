@@ -60,6 +60,26 @@ def _mock_swarm_result(node, config, specs_dir, dep_specs=None):
     )
 
 
+def _mock_swarm_result_ts(node, config, specs_dir, dep_specs=None):
+    return SwarmResult(
+        file_plan=FilePlan(files={"auth/login.ts": "impl"}),
+        generated_files={"auth/login.ts": "export function login() {}\n"},
+        generated_tests={},
+        review_passed=True,
+        review_feedback="All criteria met.",
+    )
+
+
+def _mock_swarm_review_fail(node, config, specs_dir, dep_specs=None):
+    return SwarmResult(
+        file_plan=FilePlan(files={"auth/login.ts": "impl"}),
+        generated_files={"auth/login.ts": "export function login() {}\n"},
+        generated_tests={},
+        review_passed=False,
+        review_feedback="Spec mismatch.",
+    )
+
+
 class TestStatus:
     def test_no_specs(self, tmp_path):
         proj = _setup_project(tmp_path, [])
@@ -118,6 +138,39 @@ class TestBuild:
 
         assert result.exit_code == 0, result.output
         assert "Everything is up to date" in result.output
+
+    @patch("specanopy.runner.run_swarm", side_effect=_mock_swarm_result_ts)
+    def test_writes_language_aware_traceability_headers(self, mock_swarm, tmp_path):
+        proj = _setup_project(
+            tmp_path,
+            [{"path": "behaviors/auth/login.spec.md", "id": "auth/login"}],
+        )
+        runner = CliRunner()
+        with runner.isolated_filesystem(temp_dir=tmp_path):
+            os.chdir(proj)
+            result = runner.invoke(cli, ["build"], catch_exceptions=False)
+
+        assert result.exit_code == 0, result.output
+        generated = proj / "src" / "auth" / "login.ts"
+        assert generated.exists()
+        assert generated.read_text().startswith("// generated_from: auth/login")
+
+    @patch("specanopy.runner.run_swarm", side_effect=_mock_swarm_review_fail)
+    def test_fails_build_when_swarm_review_fails(self, mock_swarm, tmp_path):
+        proj = _setup_project(
+            tmp_path,
+            [{"path": "behaviors/auth/login.spec.md", "id": "auth/login"}],
+        )
+        runner = CliRunner()
+        with runner.isolated_filesystem(temp_dir=tmp_path):
+            os.chdir(proj)
+            result = runner.invoke(cli, ["build"])
+
+        assert result.exit_code == 1
+        assert "review failed" in result.output
+        hm_path = proj / ".specanopy" / "hash-map.json"
+        data = json.loads(hm_path.read_text())
+        assert "auth/login" not in data
 
 
 class TestImpact:
@@ -233,3 +286,25 @@ class TestReview:
         assert "Suggested revision" in result.output
         proposed = proj / ".specanopy" / "proposed" / "auth_login.spec.md"
         assert proposed.exists()
+
+    @patch("specanopy.runner.run_swarm", side_effect=_mock_swarm_result)
+    @patch("specanopy.cli.review_spec", side_effect=_mock_review_pass)
+    def test_build_reviews_all_stale_specs_when_enabled(self, mock_review, mock_swarm, tmp_path):
+        proj = _setup_project(
+            tmp_path,
+            [{"path": "behaviors/login.spec.md", "id": "auth/login"}],
+            with_skill=True,
+        )
+        (proj / ".specanopy" / "config.yaml").write_text(
+            "model: gemini-3.1-flash-lite-preview\n"
+            "output_dir: src\n"
+            "specs_dir: .specanopy\n"
+            "review_before_build: true\n"
+        )
+        runner = CliRunner()
+        with runner.isolated_filesystem(temp_dir=tmp_path):
+            os.chdir(proj)
+            result = runner.invoke(cli, ["build"], catch_exceptions=False)
+
+        assert result.exit_code == 0, result.output
+        mock_review.assert_called_once()

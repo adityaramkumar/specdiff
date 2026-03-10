@@ -1,8 +1,7 @@
-# generated_from: contracts/formats/csv
-# spec_hash: 90e132fbcffa5f6dc311bc3cc70d7633e3a7f3b9c336d347aed337751388293e
-# generated_at: 2026-03-10T09:02:31.606879+00:00
-# agent: testing-agent
-
+// generated_from: contracts/formats/csv
+// spec_hash: 90e132fbcffa5f6dc311bc3cc70d7633e3a7f3b9c336d347aed337751388293e
+// generated_at: 2026-03-10T09:02:31.606879+00:00
+// agent: testing-agent
 import { parseCSV, validateCSV } from '../index';
 
 describe('CSV Format Contract (1.0.0)', () => {

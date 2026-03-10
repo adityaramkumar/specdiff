@@ -1,8 +1,7 @@
-# generated_from: behaviors/backend/crud
-# spec_hash: 8b55d2dbbc650b7f723f46ef764d5ac1fcd143b6e5dd35a8812c4a3958f4c506
-# generated_at: 2026-03-10T09:05:09.396168+00:00
-# agent: testing-agent
-
+// generated_from: behaviors/backend/crud
+// spec_hash: 8b55d2dbbc650b7f723f46ef764d5ac1fcd143b6e5dd35a8812c4a3958f4c506
+// generated_at: 2026-03-10T09:05:09.396168+00:00
+// agent: testing-agent
 import request from 'supertest';
 import app from '../src/app';
 

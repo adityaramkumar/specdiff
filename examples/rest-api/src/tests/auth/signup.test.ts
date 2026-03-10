@@ -1,8 +1,7 @@
-# generated_from: behaviors/auth/signup
-# spec_hash: 76de4dd5faf70d2285d59b7b3320eddbd2b2bb65e458c3cc5573b304b7c759d4
-# generated_at: 2026-03-10T09:00:21.233022+00:00
-# agent: testing-agent
-
+// generated_from: behaviors/auth/signup
+// spec_hash: 76de4dd5faf70d2285d59b7b3320eddbd2b2bb65e458c3cc5573b304b7c759d4
+// generated_at: 2026-03-10T09:00:21.233022+00:00
+// agent: testing-agent
 import request from 'supertest';
 import app from '../../infrastructure/web/app';
 

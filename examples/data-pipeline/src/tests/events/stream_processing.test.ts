@@ -1,8 +1,7 @@
-# generated_from: contracts/schemas/raw-events
-# spec_hash: 6eced18bceb8e4b00bcc2656f2b50decf0cd0afdd960b5bf4d162a70a2e71825
-# generated_at: 2026-03-10T09:06:52.949708+00:00
-# agent: testing-agent
-
+// generated_from: contracts/schemas/raw-events
+// spec_hash: 6eced18bceb8e4b00bcc2656f2b50decf0cd0afdd960b5bf4d162a70a2e71825
+// generated_at: 2026-03-10T09:06:52.949708+00:00
+// agent: testing-agent
 import { processNDJSON } from '../processing/stream_processor';
 import fs from 'fs';
 

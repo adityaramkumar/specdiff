@@ -1,8 +1,7 @@
-# generated_from: behaviors/validate
-# spec_hash: 0064fbd16dce3d193fa5a3f43ea798477bf69f8dd2877c90afaadad9a03530fc
-# generated_at: 2026-03-10T09:02:50.490012+00:00
-# agent: testing-agent
-
+// generated_from: behaviors/validate
+// spec_hash: 0064fbd16dce3d193fa5a3f43ea798477bf69f8dd2877c90afaadad9a03530fc
+// generated_at: 2026-03-10T09:02:50.490012+00:00
+// agent: testing-agent
 import { execSync } from 'child_process';
 import * as fs from 'fs';
 import * as path from 'path';

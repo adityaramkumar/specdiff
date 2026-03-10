@@ -88,23 +88,21 @@ def build(node_id: str | None) -> None:
         return
 
     if config.review_before_build:
-        unapproved = [n for n in stale if n.status != "approved"]
-        if unapproved:
-            try:
-                skill = load_skill(specs_dir, SPEC_EVAL_SKILL)
-            except FileNotFoundError as exc:
-                raise click.ClickException(str(exc)) from exc
+        try:
+            skill = load_skill(specs_dir, SPEC_EVAL_SKILL)
+        except FileNotFoundError as exc:
+            raise click.ClickException(str(exc)) from exc
 
-            for node in unapproved:
-                click.echo(f"  Reviewing {node.id}...")
-                result = review_spec(node, skill, config)
-                if not result.passed:
-                    click.echo(f"\n  Review failed for {node.id}:")
-                    click.echo(f"  {result.feedback}")
-                    raise click.ClickException(
-                        f"Spec '{node.id}' failed review. "
-                        "Run `specanopy review` to see suggestions."
-                    )
+        for node in stale:
+            click.echo(f"  Reviewing {node.id}...")
+            result = review_spec(node, skill, config)
+            if not result.passed:
+                click.echo(f"\n  Review failed for {node.id}:")
+                click.echo(f"  {result.feedback}")
+                raise click.ClickException(
+                    f"Spec '{node.id}' failed review. "
+                    "Run `specanopy review` to see suggestions."
+                )
 
     stale_ids = {n.id for n in nodes if hashmap.is_stale(map, n.id, n.hash)}
     ordered_ids = cascade(graph, [n.id for n in stale], stale_ids=stale_ids)
