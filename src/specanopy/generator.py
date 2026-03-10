@@ -1,14 +1,9 @@
 from __future__ import annotations
 
-import json
-import os
-import re
 from datetime import datetime, timezone
 from pathlib import Path
 
-import click
-from google import genai
-
+from specanopy.llm import extract_json, get_gemini_client
 from specanopy.types import SpecanopyConfig, SpecNode
 
 TRACEABILITY_TEMPLATE = (
@@ -25,24 +20,6 @@ SYSTEM_PROMPT = (
     "and each value is the full file contents as a string. No explanation, no "
     "markdown fences, just the raw JSON object."
 )
-
-
-def _get_api_key() -> str:
-    key = os.environ.get("GEMINI_API_KEY")
-    if not key:
-        raise click.ClickException(
-            "GEMINI_API_KEY not set. Export it:\n\n  export GEMINI_API_KEY=your-key-here\n"
-        )
-    return key
-
-
-def _extract_json(text: str) -> dict[str, str]:
-    """Extract a JSON object from the response, stripping code fences if present."""
-    stripped = text.strip()
-    fence_match = re.search(r"```(?:json)?\s*\n(.*?)```", stripped, re.DOTALL)
-    if fence_match:
-        stripped = fence_match.group(1).strip()
-    return json.loads(stripped)
 
 
 def _traceability_header(node: SpecNode) -> str:
@@ -62,8 +39,7 @@ def generate(
 
     Returns the list of written file paths (relative to project root).
     """
-    api_key = _get_api_key()
-    client = genai.Client(api_key=api_key)
+    client = get_gemini_client()
 
     dep_context = ""
     for dep in dep_specs or []:
@@ -83,7 +59,7 @@ def generate(
         contents=prompt,
     )
 
-    files = _extract_json(response.text)
+    files = extract_json(response.text)
     header = _traceability_header(node)
     written: list[str] = []
 

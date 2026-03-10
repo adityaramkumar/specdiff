@@ -8,10 +8,15 @@ from unittest.mock import patch
 from click.testing import CliRunner
 
 from specanopy.cli import cli
+from specanopy.types import ReviewResult
 
 
 def _write_spec(
-    root: Path, rel_path: str, spec_id: str, depends_on: list[str] | None = None
+    root: Path,
+    rel_path: str,
+    spec_id: str,
+    depends_on: list[str] | None = None,
+    status: str = "approved",
 ) -> None:
     dep_line = ""
     if depends_on:
@@ -19,11 +24,11 @@ def _write_spec(
         dep_line = f"depends_on:\n{items}\n"
     path = root / rel_path
     path.parent.mkdir(parents=True, exist_ok=True)
-    frontmatter = f"---\nid: {spec_id}\nversion: '1.0.0'\nstatus: approved\n{dep_line}---\n"
-    path.write_text(f"{frontmatter}\nSpec body for {spec_id}\n")
+    fm = f"---\nid: {spec_id}\nversion: '1.0.0'\nstatus: {status}\n{dep_line}---\n"
+    path.write_text(f"{fm}\nSpec body for {spec_id}\n")
 
 
-def _setup_project(tmp_path: Path, specs: list[dict]) -> Path:
+def _setup_project(tmp_path: Path, specs: list[dict], *, with_skill: bool = False) -> Path:
     """Create a minimal project with .specanopy/config.yaml and spec files."""
     specanopy_dir = tmp_path / ".specanopy"
     specanopy_dir.mkdir()
@@ -32,6 +37,10 @@ def _setup_project(tmp_path: Path, specs: list[dict]) -> Path:
     )
     for s in specs:
         _write_spec(specanopy_dir, s["path"], s["id"], s.get("depends_on"))
+    if with_skill:
+        skills_dir = specanopy_dir / "skills"
+        skills_dir.mkdir()
+        (skills_dir / "spec-eval.skill.md").write_text("## Role\nYou review specs.\n")
     return tmp_path
 
 
@@ -164,3 +173,65 @@ class TestImpact:
 
         assert result.exit_code == 0, result.output
         assert "up to date" in result.output
+
+
+def _mock_review_pass(node, skill, config):
+    return ReviewResult(passed=True, feedback="All criteria met.")
+
+
+def _mock_review_fail(node, skill, config):
+    return ReviewResult(
+        passed=False,
+        feedback="Vague error handling.",
+        proposed_revision="## Revised\n\nReturn HTTP 500.",
+    )
+
+
+class TestReview:
+    @patch("specanopy.cli.review_spec", side_effect=_mock_review_pass)
+    def test_review_pass(self, mock_review, tmp_path):
+        proj = _setup_project(
+            tmp_path,
+            [{"path": "behaviors/login.spec.md", "id": "auth/login"}],
+            with_skill=True,
+        )
+        # Write spec as draft so review picks it up
+        _write_spec(
+            proj / ".specanopy",
+            "behaviors/login.spec.md",
+            "auth/login",
+            status="draft",
+        )
+
+        runner = CliRunner()
+        with runner.isolated_filesystem(temp_dir=tmp_path):
+            os.chdir(proj)
+            result = runner.invoke(cli, ["review"], catch_exceptions=False)
+
+        assert result.exit_code == 0, result.output
+        assert "PASSED" in result.output
+
+    @patch("specanopy.cli.review_spec", side_effect=_mock_review_fail)
+    def test_review_fail_writes_proposal(self, mock_review, tmp_path):
+        proj = _setup_project(
+            tmp_path,
+            [{"path": "behaviors/login.spec.md", "id": "auth/login"}],
+            with_skill=True,
+        )
+        _write_spec(
+            proj / ".specanopy",
+            "behaviors/login.spec.md",
+            "auth/login",
+            status="draft",
+        )
+
+        runner = CliRunner()
+        with runner.isolated_filesystem(temp_dir=tmp_path):
+            os.chdir(proj)
+            result = runner.invoke(cli, ["review"])
+
+        assert result.exit_code == 1
+        assert "FAILED" in result.output
+        assert "Suggested revision" in result.output
+        proposed = proj / ".specanopy" / "proposed" / "auth_login.spec.md"
+        assert proposed.exists()

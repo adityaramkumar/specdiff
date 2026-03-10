@@ -6,14 +6,20 @@ from specanopy.graph import build_graph, cascade, impact_summary, topo_sort
 from specanopy.types import SpecNode
 
 
-def _make_node(id: str, depends_on: list[str] | None = None) -> SpecNode:
+def _make_node(
+    id: str,
+    depends_on: list[str] | None = None,
+    parent: str | None = None,
+    status: str = "approved",
+) -> SpecNode:
     return SpecNode(
         id=id,
         version="1.0.0",
-        status="approved",
+        status=status,
         hash=f"hash-{id}",
         content=f"content for {id}",
         file_path=f".specanopy/{id}.spec.md",
+        parent=parent,
         depends_on=depends_on or [],
     )
 
@@ -41,6 +47,31 @@ class TestBuildGraph:
 
         assert graph.dependents.get("a", []) == []
         assert graph.dependents.get("b", []) == []
+
+
+class TestParentValidation:
+    def test_valid_parent(self):
+        parent = _make_node("auth")
+        child = _make_node("auth/login", parent="auth")
+        graph = build_graph([parent, child])
+        assert "auth/login" in graph.nodes
+
+    def test_orphaned_parent(self):
+        child = _make_node("auth/login", parent="nonexistent")
+        with pytest.raises(ValueError, match="declares parent 'nonexistent'"):
+            build_graph([child])
+
+    def test_status_conflict(self):
+        parent = _make_node("auth", status="locked")
+        child = _make_node("auth/login", parent="auth", status="draft")
+        with pytest.raises(ValueError, match="conflicts with parent"):
+            build_graph([parent, child])
+
+    def test_matching_status_ok(self):
+        parent = _make_node("auth", status="approved")
+        child = _make_node("auth/login", parent="auth", status="approved")
+        graph = build_graph([parent, child])
+        assert "auth/login" in graph.nodes
 
 
 class TestTopoSort:

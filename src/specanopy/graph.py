@@ -15,7 +15,8 @@ class SpecGraph:
 def build_graph(nodes: list[SpecNode]) -> SpecGraph:
     """Build a dependency graph from spec nodes.
 
-    Raises ValueError if any depends_on target does not exist.
+    Raises ValueError if any depends_on target or parent reference does not exist,
+    or if a child contradicts a parent's frontmatter fields.
     """
     graph = SpecGraph()
     graph.nodes = {n.id: n for n in nodes}
@@ -26,7 +27,26 @@ def build_graph(nodes: list[SpecNode]) -> SpecGraph:
                 raise ValueError(f"{node.id} depends on {dep_id}, but that spec does not exist.")
             graph.dependents[dep_id].append(node.id)
 
+    _validate_parents(graph)
+
     return graph
+
+
+def _validate_parents(graph: SpecGraph) -> None:
+    """Check that parent references exist and children don't contradict parent fields."""
+    for node in graph.nodes.values():
+        if node.parent is None:
+            continue
+        if node.parent not in graph.nodes:
+            raise ValueError(
+                f"{node.id} declares parent '{node.parent}', but that spec does not exist."
+            )
+        parent = graph.nodes[node.parent]
+        if parent.status != node.status:
+            raise ValueError(
+                f"{node.id} has status '{node.status}' which conflicts with "
+                f"parent '{parent.id}' status '{parent.status}'."
+            )
 
 
 def topo_sort(graph: SpecGraph, node_ids: list[str]) -> list[str]:

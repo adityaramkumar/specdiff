@@ -55,3 +55,11 @@ class SpecanopyConfig:
     test_command: str | None = None
     output_dir: str = "src"
     specs_dir: str = ".specanopy"
+    review_before_build: bool = False
+
+
+@dataclass
+class ReviewResult:
+    passed: bool
+    feedback: str
+    proposed_revision: str | None = None

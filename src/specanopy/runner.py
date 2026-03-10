@@ -66,40 +66,6 @@ def run_tests(config: SpecanopyConfig) -> tuple[bool, str]:
     return result.returncode == 0, output
 
 
-def execute(
-    node: SpecNode,
-    config: SpecanopyConfig,
-    map: HashMap,
-    specs_dir: Path,
-) -> bool:
-    """Full build cycle for a single spec node: generate -> test -> commit/rollback.
-
-    Returns True on success, False on failure.
-    """
-    prev_entry = map.nodes.get(node.id)
-    prev_files = prev_entry.generated_files if prev_entry else []
-
-    backup(prev_files, specs_dir)
-
-    try:
-        written = generate(node, config)
-    except Exception as exc:
-        click.echo(f"  Generation failed: {exc}", err=True)
-        restore(prev_files, specs_dir)
-        return False
-
-    passed, output = run_tests(config)
-
-    if not passed:
-        click.echo(f"  Tests failed for {node.id}, rolling back.", err=True)
-        restore(written, specs_dir)
-        return False
-
-    clean_backups(specs_dir)
-    hashmap.update(map, node.id, node.hash, written)
-    return True
-
-
 def execute_cascade(
     ordered_nodes: list[SpecNode],
     config: SpecanopyConfig,
@@ -108,6 +74,17 @@ def execute_cascade(
     specs_dir: Path,
 ) -> bool:
     """Build a batch of nodes: backup all -> generate all -> test once -> commit/rollback all."""
+    # Pre-flight: ensure existing tests pass before we regenerate anything.
+    # If the suite is already broken, regeneration failures would be misleading.
+    if config.test_command:
+        baseline_ok, _ = run_tests(config)
+        if not baseline_ok:
+            click.echo(
+                "  Test suite is already failing -- fix existing failures before regenerating.",
+                err=True,
+            )
+            return False
+
     all_prev_files: list[str] = []
     for node in ordered_nodes:
         entry = map.nodes.get(node.id)
