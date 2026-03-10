@@ -1,0 +1,22 @@
+[build-system]
+requires = ["setuptools>=68.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "specanopy"
+version = "0.1.0"
+description = "Spec-driven code generation — the spec is the source of truth, code is a build artifact."
+requires-python = ">=3.10"
+dependencies = [
+    "click",
+    "python-frontmatter",
+    "google-genai",
+    "python-dotenv",
+    "pyyaml",
+]
+
+[project.scripts]
+specanopy = "specanopy.cli:cli"
+
+[tool.setuptools.packages.find]
+where = ["src"]

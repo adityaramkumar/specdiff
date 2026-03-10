@@ -1,0 +1,11 @@
+{
+  "behaviors/auth/login": {
+    "spec_hash": "00335c53ca3b6c799e009972b346695606d4fcc3a9ac7f85e4fc5ef7179f7657",
+    "generated_files": [
+      "src/auth/login.controller.ts",
+      "src/auth/auth.service.ts",
+      "src/auth/user.store.ts"
+    ],
+    "generated_at": "2026-03-10T07:36:18.782933+00:00"
+  }
+}
