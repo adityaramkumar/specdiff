@@ -100,8 +100,7 @@ def build(node_id: str | None) -> None:
                 click.echo(f"\n  Review failed for {node.id}:")
                 click.echo(f"  {result.feedback}")
                 raise click.ClickException(
-                    f"Spec '{node.id}' failed review. "
-                    "Run `specanopy review` to see suggestions."
+                    f"Spec '{node.id}' failed review. Run `specanopy review` to see suggestions."
                 )
 
     stale_ids = {n.id for n in nodes if hashmap.is_stale(map, n.id, n.hash)}
