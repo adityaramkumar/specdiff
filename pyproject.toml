@@ -15,8 +15,14 @@ dependencies = [
     "pyyaml",
 ]
 
+[project.optional-dependencies]
+dev = ["pytest"]
+
 [project.scripts]
 specanopy = "specanopy.cli:cli"
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

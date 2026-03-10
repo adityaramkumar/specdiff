@@ -54,7 +54,11 @@ def _traceability_header(node: SpecNode) -> str:
     )
 
 
-def generate(node: SpecNode, config: SpecanopyConfig) -> list[str]:
+def generate(
+    node: SpecNode,
+    config: SpecanopyConfig,
+    dep_specs: list[SpecNode] | None = None,
+) -> list[str]:
     """Generate code files from a spec node via the Gemini API.
 
     Returns the list of written file paths (relative to project root).
@@ -62,10 +66,19 @@ def generate(node: SpecNode, config: SpecanopyConfig) -> list[str]:
     api_key = _get_api_key()
     client = genai.Client(api_key=api_key)
 
+    dep_context = ""
+    for dep in dep_specs or []:
+        dep_context += (
+            f"\n--- DEPENDENCY: {dep.id} ---\n"
+            f"{dep.content}\n"
+            f"--- END DEPENDENCY ---\n"
+        )
+
     prompt = (
         f"Spec ID: {node.id}\n"
         f"Version: {node.version}\n\n"
-        f"--- SPEC CONTENT ---\n{node.content}\n--- END SPEC ---\n\n"
+        f"--- SPEC CONTENT ---\n{node.content}\n--- END SPEC ---\n"
+        f"{dep_context}\n"
         f"Generate the implementation files. Output directory: {config.output_dir}"
     )
 

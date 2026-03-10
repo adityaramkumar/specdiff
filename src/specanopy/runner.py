@@ -8,6 +8,7 @@ import click
 
 from specanopy import hashmap
 from specanopy.generator import generate
+from specanopy.graph import SpecGraph
 from specanopy.types import HashMap, SpecNode, SpecanopyConfig
 
 BACKUP_DIR = ".backup"
@@ -96,4 +97,48 @@ def execute(
 
     clean_backups(specs_dir)
     hashmap.update(map, node.id, node.hash, written)
+    return True
+
+
+def execute_cascade(
+    ordered_nodes: list[SpecNode],
+    config: SpecanopyConfig,
+    map: HashMap,
+    graph: SpecGraph,
+    specs_dir: Path,
+) -> bool:
+    """Build a batch of nodes: backup all -> generate all -> test once -> commit/rollback all."""
+    all_prev_files: list[str] = []
+    for node in ordered_nodes:
+        entry = map.nodes.get(node.id)
+        if entry:
+            all_prev_files.extend(entry.generated_files)
+
+    backup(all_prev_files, specs_dir)
+
+    all_written: dict[str, list[str]] = {}
+    for node in ordered_nodes:
+        click.echo(f"  [{node.id}] generating...")
+        dep_specs = [graph.nodes[d] for d in node.depends_on if d in graph.nodes]
+        try:
+            written = generate(node, config, dep_specs=dep_specs)
+        except Exception as exc:
+            click.echo(f"  [{node.id}] generation failed: {exc}", err=True)
+            all_restore = [f for files in all_written.values() for f in files]
+            restore(all_restore + all_prev_files, specs_dir)
+            return False
+        all_written[node.id] = written
+        click.echo(f"  [{node.id}] done.")
+
+    passed, _ = run_tests(config)
+
+    if not passed:
+        click.echo("  Tests failed, rolling back entire cascade.", err=True)
+        all_new = [f for files in all_written.values() for f in files]
+        restore(all_new + all_prev_files, specs_dir)
+        return False
+
+    clean_backups(specs_dir)
+    for node in ordered_nodes:
+        hashmap.update(map, node.id, node.hash, all_written[node.id])
     return True
