@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from specanopy.llm import extract_json, get_gemini_client
-from specanopy.types import ReviewResult, SpecanopyConfig, SpecNode
+from specdiff.llm import extract_json, get_gemini_client
+from specdiff.types import ReviewResult, SpecdiffConfig, SpecNode
 
 REVIEW_PROMPT_TEMPLATE = """\
 Review the following spec. Evaluate it against the criteria in your system prompt.
@@ -23,7 +23,7 @@ Return raw JSON only, no markdown fences.
 """
 
 
-def review_spec(node: SpecNode, skill_content: str, config: SpecanopyConfig) -> ReviewResult:
+def review_spec(node: SpecNode, skill_content: str, config: SpecdiffConfig) -> ReviewResult:
     """Run the Spec Agent to evaluate a spec node against a skill's criteria."""
     client = get_gemini_client()
 

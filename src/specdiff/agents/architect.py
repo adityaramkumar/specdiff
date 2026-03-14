@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from specanopy.llm import extract_json
-from specanopy.types import FilePlan, SpecNode
+from specdiff.llm import extract_json
+from specdiff.types import FilePlan, SpecNode
 
 
 def format_architect_prompt(node: SpecNode, dep_specs: list[SpecNode] | None = None) -> str:

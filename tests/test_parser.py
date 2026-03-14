@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from specanopy.parser import discover_specs, parse_spec_file
+from specdiff.parser import discover_specs, parse_spec_file
 
 VALID_SPEC = """\
 ---

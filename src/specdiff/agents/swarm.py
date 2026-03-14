@@ -7,14 +7,14 @@ from google.adk.agents import LlmAgent, ParallelAgent, SequentialAgent
 from google.adk.runners import InMemoryRunner
 from google.genai import types as genai_types
 
-from specanopy.llm import extract_json
-from specanopy.skills import discover_skills
-from specanopy.types import FilePlan, SpecanopyConfig, SpecNode, SwarmResult
+from specdiff.llm import extract_json
+from specdiff.skills import discover_skills
+from specdiff.types import FilePlan, SpecdiffConfig, SpecNode, SwarmResult
 
 REQUIRED_SKILLS = ("architect", "interface", "implementation", "testing", "review")
 
 
-def build_swarm(config: SpecanopyConfig, skill_content: dict[str, str]) -> SequentialAgent:
+def build_swarm(config: SpecdiffConfig, skill_content: dict[str, str]) -> SequentialAgent:
     """Build the multi-agent pipeline from skill files."""
     architect = LlmAgent(
         name="architect",
@@ -108,15 +108,15 @@ def _normalize_review_feedback(feedback: object) -> str:
 
 async def _run_pipeline(pipeline: SequentialAgent, prompt: str) -> dict[str, str]:
     """Run the ADK pipeline and collect output_key values from session state."""
-    runner = InMemoryRunner(agent=pipeline, app_name="specanopy")
-    session = await runner.session_service.create_session(app_name="specanopy", user_id="specanopy")
+    runner = InMemoryRunner(agent=pipeline, app_name="specdiff")
+    session = await runner.session_service.create_session(app_name="specdiff", user_id="specdiff")
 
     content = genai_types.Content(role="user", parts=[genai_types.Part(text=prompt)])
 
     outputs: dict[str, str] = {}
     async for event in runner.run_async(
         new_message=content,
-        user_id="specanopy",
+        user_id="specdiff",
         session_id=session.id,
     ):
         if event.is_final_response() and event.content and event.content.parts:
@@ -125,8 +125,8 @@ async def _run_pipeline(pipeline: SequentialAgent, prompt: str) -> dict[str, str
                 outputs["final"] = text
 
     updated_session = await runner.session_service.get_session(
-        app_name="specanopy",
-        user_id="specanopy",
+        app_name="specdiff",
+        user_id="specdiff",
         session_id=session.id,
     )
     if updated_session and updated_session.state:
@@ -137,7 +137,7 @@ async def _run_pipeline(pipeline: SequentialAgent, prompt: str) -> dict[str, str
 
 def run_swarm(
     node: SpecNode,
-    config: SpecanopyConfig,
+    config: SpecdiffConfig,
     specs_dir: Path,
     dep_specs: list[SpecNode] | None = None,
 ) -> SwarmResult:

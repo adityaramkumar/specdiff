@@ -51,11 +51,11 @@ class HashMap:
 
 
 @dataclass
-class SpecanopyConfig:
+class SpecdiffConfig:
     model: str = "gemini-3.1-flash-lite-preview"
     test_command: str | None = None
     output_dir: str = "src"
-    specs_dir: str = ".specanopy"
+    specs_dir: str = ".specdiff"
     review_before_build: bool = False
     language: str = "python"
     test_framework: str | None = None

@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import pytest
 
-from specanopy.graph import build_graph, cascade, impact_summary, topo_sort
-from specanopy.types import SpecNode
+from specdiff.graph import build_graph, cascade, impact_summary, topo_sort
+from specdiff.types import SpecNode
 
 
 def _make_node(
@@ -18,7 +18,7 @@ def _make_node(
         status=status,
         hash=f"hash-{id}",
         content=f"content for {id}",
-        file_path=f".specanopy/{id}.spec.md",
+        file_path=f".specdiff/{id}.spec.md",
         parent=parent,
         depends_on=depends_on or [],
     )

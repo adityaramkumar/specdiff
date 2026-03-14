@@ -5,8 +5,8 @@ from pathlib import Path
 
 import click
 
-from specanopy.llm import extract_json, get_gemini_client
-from specanopy.types import SpecanopyConfig
+from specdiff.llm import extract_json, get_gemini_client
+from specdiff.types import SpecdiffConfig
 
 _EXTENSIONS = (".py", ".js", ".ts", ".go", ".java", ".json", ".yaml", ".md")
 _IGNORE_DIRS = {
@@ -15,7 +15,7 @@ _IGNORE_DIRS = {
     "venv",
     ".venv",
     "__pycache__",
-    ".specanopy",
+    ".specdiff",
     "ui",
     "ui_dist",
     "dist",
@@ -26,7 +26,7 @@ _IGNORE_DIRS = {
 def generate_specs_from_code(
     src_dir: Path,
     specs_dir: Path,
-    config: SpecanopyConfig,
+    config: SpecdiffConfig,
     granularity: str = "auto",
 ) -> None:
     """Read a codebase and use the LLM to write spec files."""
@@ -71,7 +71,7 @@ def _collect_source_files(src_dir: Path) -> list[dict[str, str]]:
 
 
 def _generate_migration_skill(
-    client, code_text: str, specs_dir: Path, config: SpecanopyConfig
+    client, code_text: str, specs_dir: Path, config: SpecdiffConfig
 ) -> None:
     click.echo("Generating migration.skill.md (Architectural context)...")
     skill_prompt = (
@@ -102,7 +102,7 @@ def _generate_migration_skill(
         click.echo(f"Warning: Failed to generate migration.skill.md: {e}")
 
 
-def _extract_auto(client, code_text: str, specs_dir: Path, config: SpecanopyConfig) -> None:
+def _extract_auto(client, code_text: str, specs_dir: Path, config: SpecdiffConfig) -> None:
     click.echo("Sending payload to LLM to extract contracts...")
 
     contract_prompt = f"""
@@ -204,7 +204,7 @@ def _extract_file_by_file(
     client,
     code_files: list[dict[str, str]],
     specs_dir: Path,
-    config: SpecanopyConfig,
+    config: SpecdiffConfig,
 ) -> None:
     click.echo(f"Extracting 1:1 specs for {len(code_files)} files...")
     all_paths = [cf["path"] for cf in code_files]
@@ -216,7 +216,7 @@ def _extract_file_by_file(
 
         prompt = (
             "You are an expert systems architect. Convert the following "
-            "source file into a single Specanopy Markdown spec.\n\n"
+            "source file into a single Specdiff Markdown spec.\n\n"
             f"Project File List (for reference when creating depends_on links):\n"
             f"{paths_list}\n\n"
             f"Source File: {cf['path']}\nContent:\n```\n{cf['content']}\n```\n\n"

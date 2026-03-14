@@ -1,12 +1,12 @@
-# Contributing to Specanopy
+# Contributing to Specdiff
 
 Thanks for your interest in contributing. Before diving in, please read the [Design Document](DESIGN.md) -- it explains the system's architecture, the spec graph, the multi-agent swarm, and the design decisions behind them.
 
 ## Getting Started
 
 ```bash
-git clone git@github.com:adityaramkumar/specanopy.git
-cd specanopy
+git clone git@github.com:adityaramkumar/specdiff.git
+cd specdiff
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -e ".[dev]"
@@ -30,7 +30,7 @@ All changes must pass CI (lint + tests) before merging.
 ## Project Structure
 
 ```
-src/specanopy/
+src/specdiff/
   cli.py          # Click CLI commands
   parser.py       # Spec file parser (frontmatter + hashing)
   graph.py        # Dependency graph, topo sort, cascade
@@ -49,7 +49,7 @@ src/specanopy/
 
 1. **Bug fixes** -- open an issue first, then submit a PR with a test that reproduces the bug.
 2. **New features** -- discuss in an issue before writing code. The phased build plan in [DESIGN.md](DESIGN.md) describes what's planned.
-3. **Examples** -- new example projects in `examples/` are welcome. Each should be self-contained with its own `.specanopy/` directory and a symlink to `shared-skills/`.
+3. **Examples** -- new example projects in `examples/` are welcome. Each should be self-contained with its own `.specdiff/` directory and a symlink to `shared-skills/`.
 4. **Skill files** -- improvements to the example skill files in `examples/shared-skills/` that produce better generation output.
 
 ## Code Style

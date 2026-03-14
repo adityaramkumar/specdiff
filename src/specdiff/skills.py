@@ -6,7 +6,7 @@ SKILLS_DIR = "skills"
 
 
 def load_skill(specs_dir: Path, skill_name: str) -> str:
-    """Load a skill file by name from .specanopy/skills/{name}.skill.md."""
+    """Load a skill file by name from .specdiff/skills/{name}.skill.md."""
     path = specs_dir / SKILLS_DIR / f"{skill_name}.skill.md"
     if not path.exists():
         raise FileNotFoundError(

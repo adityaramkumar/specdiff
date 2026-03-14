@@ -1,6 +1,6 @@
-# Specanopy - Design
+# Specdiff - Design
 
-> Specanopy turns software development into a compilation problem.
+> Specdiff turns software development into a compilation problem.
 >
 > Note: this document describes the target architecture. The current implementation already covers spec parsing, dependency graphs, incremental rebuild tracking, `build`/`status`/`impact`/`review` commands, a basic architect -> implementation/testing -> review swarm, and rollback on failing tests. Independent test specs, reconciler/migration agents, reverse-patch debugging, version-history edges, and user-defined agents are still future work.
 
@@ -24,7 +24,7 @@ The result is that AI makes the existing problem worse. More code. Less understa
 
 The deeper issue is that both humans and AI are now forced to reason about code as the primary artifact. Code is a poor medium for reasoning about intent. It's low-level, noisy, and full of implementation details that obscure behavior. A 500-line file that implements a login flow tells you far less about what the login flow is supposed to do than two paragraphs of well-written spec. Yet the 500-line file is what everyone reads, reviews, and passes to the next AI agent as context.
 
-Specanopy inverts this. The spec is the source of truth - short, human-readable, reasoned about. The code is a build artifact - long, machine-optimized, derived. AI generates *down* from a spec rather than *into* a void. The spec stays small and meaningful. The code stays disposable.
+Specdiff inverts this. The spec is the source of truth - short, human-readable, reasoned about. The code is a build artifact - long, machine-optimized, derived. AI generates *down* from a spec rather than *into* a void. The spec stays small and meaningful. The code stays disposable.
 
 ---
 
@@ -40,7 +40,7 @@ The hierarchy still exists - the root constitution constrains everything below i
 
 ```
 project/
-  .specanopy/
+  .specdiff/
     constitution.md          <- root: project values, non-negotiables
     intent/                  <- why: goals and user problems
     contracts/               <- what: APIs, schemas, data shapes
@@ -54,7 +54,7 @@ project/
         login.test-spec.md
 ```
 
-The spec format is **not enforced by the system**. Users bring their own - prose, YAML, diagrams, whatever works for their team. Specanopy only requires a minimal header on each node so it can track identity, position in the graph, and dependencies:
+The spec format is **not enforced by the system**. Users bring their own - prose, YAML, diagrams, whatever works for their team. Specdiff only requires a minimal header on each node so it can track identity, position in the graph, and dependencies:
 
 ```yaml
 ---
@@ -108,7 +108,7 @@ When a behavior spec changes, its linked test specs are flagged as stale and the
 
 ## Incremental Builds via Hashing
 
-This is the engine of the system. Every spec node has a hash of its content. Specanopy maintains a map of which spec hash produced which code files. When a spec changes, only the stale files are regenerated - nothing else is touched.
+This is the engine of the system. Every spec node has a hash of its content. Specdiff maintains a map of which spec hash produced which code files. When a spec changes, only the stale files are regenerated - nothing else is touched.
 
 ```
 auth/login spec changes -> hash: a1b2c3 -> f9e8d7
@@ -120,7 +120,7 @@ Result: only those 2 files queued for regeneration.
 Everything else: untouched.
 ```
 
-When a contract node changes (e.g. a schema), Specanopy walks the dependency graph and flags all downstream nodes too - a cascade. Everything affected is automatically queued for regeneration in the right order.
+When a contract node changes (e.g. a schema), Specdiff walks the dependency graph and flags all downstream nodes too - a cascade. Everything affected is automatically queued for regeneration in the right order.
 
 **Safety rules:**
 - Never regenerate without a passing test baseline first
@@ -128,7 +128,7 @@ When a contract node changes (e.g. a schema), Specanopy walks the dependency gra
 
 ### Spec-Level Impact Preview
 
-Before any regeneration runs, Specanopy shows the behavioral blast radius of a spec change - expressed entirely in spec terms, not code terms. The point of the system is that code is an implementation detail; the impact preview reflects this.
+Before any regeneration runs, Specdiff shows the behavioral blast radius of a spec change - expressed entirely in spec terms, not code terms. The point of the system is that code is an implementation detail; the impact preview reflects this.
 
 ```
 Spec change detected: behaviors/auth/login v1.2.0 -> v1.3.0
@@ -205,7 +205,7 @@ Each agent reads a skill file before acting. Think of skill files as the system 
 The Spec Agent's skill focuses on one thing above all: **ensuring the spec is unambiguous enough to generate behaviorally equivalent code across runs**. A vague spec produces inconsistent output. Full determinism - two agents producing character-for-character identical code - is neither achievable nor the goal. What is achievable is behavioral equivalence: two different implementations that both satisfy the same spec and pass the same test suite are both correct. The spec constrains behavior; the test spec enforces it. Together they define the correctness boundary - the spec alone never could.
 
 ```markdown
-# .specanopy/skills/spec-eval.skill.md
+# .specdiff/skills/spec-eval.skill.md
 
 ## Role
 You are a senior systems architect reviewing a spec change.
@@ -315,7 +315,7 @@ The implementation agent reproduces the snippet faithfully; it does not reinterp
 
 When a developer finds a bug in generated code, they cannot edit the file directly - it will be overwritten on the next regeneration cycle. The fix must live in the spec. But staring at a spec and figuring out which sentence to change is harder than just fixing the obvious line of code.
 
-Specanopy provides a sandbox for this. The developer makes their fix in the generated file locally. An agent diffs the patch against the original and proposes a spec delta - a suggested change to the upstream spec node that would produce that fix.
+Specdiff provides a sandbox for this. The developer makes their fix in the generated file locally. An agent diffs the patch against the original and proposes a spec delta - a suggested change to the upstream spec node that would produce that fix.
 
 ```
 Sandbox patch detected: src/auth/login.ts
@@ -383,10 +383,10 @@ Confirm this column is unused before applying.
 
 ---
 
-## What Specanopy Is
+## What Specdiff Is
 
 1. **A graph store** - spec nodes with hashes, versions, and dependency edges
 2. **An agent runtime** - routes work to registered agents when specs change
 3. **A minimal contract** - the interface a spec node and an agent must satisfy
 
-The spec format, agent roster, and skill content are all user configuration. Specanopy is the compiler. You write the source.
+The spec format, agent roster, and skill content are all user configuration. Specdiff is the compiler. You write the source.

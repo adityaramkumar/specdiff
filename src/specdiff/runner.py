@@ -7,16 +7,16 @@ from pathlib import Path
 
 import click
 
-from specanopy import hashmap
-from specanopy.agents.swarm import run_swarm
-from specanopy.graph import SpecGraph
-from specanopy.types import HashMap, SpecanopyConfig, SpecNode
+from specdiff import hashmap
+from specdiff.agents.swarm import run_swarm
+from specdiff.graph import SpecGraph
+from specdiff.types import HashMap, SpecdiffConfig, SpecNode
 
 BACKUP_DIR = ".backup"
 
 
 def backup(files: list[str], specs_dir: Path) -> None:
-    """Copy existing generated files into .specanopy/.backup/ before overwriting."""
+    """Copy existing generated files into .specdiff/.backup/ before overwriting."""
     backup_root = specs_dir / BACKUP_DIR
     for rel in files:
         src = Path(rel)
@@ -42,13 +42,13 @@ def restore(files: list[str], specs_dir: Path) -> None:
 
 
 def clean_backups(specs_dir: Path) -> None:
-    """Remove the entire .specanopy/.backup/ directory."""
+    """Remove the entire .specdiff/.backup/ directory."""
     backup_root = specs_dir / BACKUP_DIR
     if backup_root.exists():
         shutil.rmtree(backup_root)
 
 
-def run_tests(config: SpecanopyConfig) -> tuple[bool, str]:
+def run_tests(config: SpecdiffConfig) -> tuple[bool, str]:
     """Run the configured test command. Returns (passed, output).
 
     stdout/stderr stream live to the terminal so the user sees progress.
@@ -116,7 +116,7 @@ def _write_swarm_files(
 
 def execute_swarm_cascade(
     ordered_nodes: list[SpecNode],
-    config: SpecanopyConfig,
+    config: SpecdiffConfig,
     map: HashMap,
     graph: SpecGraph,
     specs_dir: Path,
@@ -158,7 +158,7 @@ def execute_swarm_cascade(
                 err=True,
             )
             click.echo(
-                "  Set test_command in .specanopy/config.yaml so Specanopy can run a baseline "
+                "  Set test_command in .specdiff/config.yaml so Specdiff can run a baseline "
                 "and verify regenerated output.",
                 err=True,
             )

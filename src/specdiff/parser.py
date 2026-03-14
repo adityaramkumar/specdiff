@@ -6,7 +6,7 @@ from pathlib import Path
 
 import frontmatter
 
-from specanopy.types import SpecNode
+from specdiff.types import SpecNode
 
 
 def parse_spec_file(file_path: Path) -> SpecNode:

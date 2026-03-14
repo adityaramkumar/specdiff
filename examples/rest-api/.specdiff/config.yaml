@@ -1,6 +1,6 @@
 model: gemini-3.1-flash-lite-preview
 output_dir: src
-specs_dir: .specanopy
+specs_dir: .specdiff
 language: typescript
 test_framework: vitest
 # TODO: remove `|| true` once the sequential pipeline lands (Phase 5) --

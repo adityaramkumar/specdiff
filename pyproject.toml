@@ -3,7 +3,7 @@ requires = ["setuptools>=68.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "specanopy"
+name = "specdiff"
 version = "0.1.0"
 description = "Spec-driven code generation — the spec is the source of truth, code is a build artifact."
 readme = "README.md"
@@ -29,15 +29,15 @@ dependencies = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/aramkumar/specanopy"
-Repository = "https://github.com/aramkumar/specanopy"
-Issues = "https://github.com/aramkumar/specanopy/issues"
+Homepage = "https://github.com/aramkumar/specdiff"
+Repository = "https://github.com/aramkumar/specdiff"
+Issues = "https://github.com/aramkumar/specdiff/issues"
 
 [project.optional-dependencies]
 dev = ["pytest", "ruff"]
 
 [project.scripts]
-specanopy = "specanopy.cli:cli"
+specdiff = "specdiff.cli:cli"
 
 [tool.setuptools.packages.find]
 where = ["src"]

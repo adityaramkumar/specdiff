@@ -5,7 +5,7 @@ import os
 from datetime import datetime, timezone
 from pathlib import Path
 
-from specanopy.types import HashMap, HashMapEntry
+from specdiff.types import HashMap, HashMapEntry
 
 HASH_MAP_FILE = "hash-map.json"
 

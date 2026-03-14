@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from specanopy.skills import discover_skills, load_skill
+from specdiff.skills import discover_skills, load_skill
 
 
 class TestLoadSkill:

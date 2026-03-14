@@ -6,8 +6,8 @@ from unittest.mock import patch
 
 import pytest
 
-from specanopy.agents.swarm import REQUIRED_SKILLS, _build_prompt, build_swarm, run_swarm
-from specanopy.types import SpecanopyConfig, SpecNode
+from specdiff.agents.swarm import REQUIRED_SKILLS, _build_prompt, build_swarm, run_swarm
+from specdiff.types import SpecdiffConfig, SpecNode
 
 
 def _make_node() -> SpecNode:
@@ -17,7 +17,7 @@ def _make_node() -> SpecNode:
         status="approved",
         hash="abc123",
         content="## Example\n\nReturn 200 on success.",
-        file_path=".specanopy/test/example.spec.md",
+        file_path=".specdiff/test/example.spec.md",
     )
 
 
@@ -26,7 +26,7 @@ def _make_skills() -> dict[str, str]:
 
 
 def _setup_skills_dir(tmp_path: Path) -> Path:
-    specs_dir = tmp_path / ".specanopy"
+    specs_dir = tmp_path / ".specdiff"
     skills_dir = specs_dir / "skills"
     skills_dir.mkdir(parents=True)
     for name in REQUIRED_SKILLS:
@@ -36,7 +36,7 @@ def _setup_skills_dir(tmp_path: Path) -> Path:
 
 class TestBuildSwarm:
     def test_structure(self):
-        config = SpecanopyConfig()
+        config = SpecdiffConfig()
         pipeline = build_swarm(config, _make_skills())
 
         assert pipeline.name == "build_pipeline"
@@ -85,7 +85,7 @@ class TestBuildPrompt:
 
 
 class TestLanguageResolution:
-    @patch("specanopy.agents.swarm._run_pipeline")
+    @patch("specdiff.agents.swarm._run_pipeline")
     def test_spec_language_overrides_config(self, mock_pipeline, tmp_path):
         specs_dir = _setup_skills_dir(tmp_path)
         mock_pipeline.return_value = {
@@ -101,17 +101,17 @@ class TestLanguageResolution:
             status="approved",
             hash="abc123",
             content="## Example",
-            file_path=".specanopy/test/example.spec.md",
+            file_path=".specdiff/test/example.spec.md",
             language="typescript",
         )
-        config = SpecanopyConfig(language="python", test_framework="pytest")
+        config = SpecdiffConfig(language="python", test_framework="pytest")
         run_swarm(node, config, specs_dir)
 
         call_args = mock_pipeline.call_args
         prompt = call_args[0][1]
         assert "Language: typescript" in prompt
 
-    @patch("specanopy.agents.swarm._run_pipeline")
+    @patch("specdiff.agents.swarm._run_pipeline")
     def test_config_language_used_when_no_spec_override(self, mock_pipeline, tmp_path):
         specs_dir = _setup_skills_dir(tmp_path)
         mock_pipeline.return_value = {
@@ -121,7 +121,7 @@ class TestLanguageResolution:
             "review_result": json.dumps({"passed": True, "feedback": "ok"}),
         }
 
-        config = SpecanopyConfig(language="typescript", test_framework="vitest")
+        config = SpecdiffConfig(language="typescript", test_framework="vitest")
         run_swarm(_make_node(), config, specs_dir)
 
         call_args = mock_pipeline.call_args
@@ -131,7 +131,7 @@ class TestLanguageResolution:
 
 
 class TestRunSwarm:
-    @patch("specanopy.agents.swarm._run_pipeline")
+    @patch("specdiff.agents.swarm._run_pipeline")
     def test_pass(self, mock_pipeline, tmp_path):
         specs_dir = _setup_skills_dir(tmp_path)
         mock_pipeline.return_value = {
@@ -141,13 +141,13 @@ class TestRunSwarm:
             "review_result": json.dumps({"passed": True, "feedback": "All criteria met."}),
         }
 
-        result = run_swarm(_make_node(), SpecanopyConfig(), specs_dir)
+        result = run_swarm(_make_node(), SpecdiffConfig(), specs_dir)
         assert result.review_passed is True
         assert "auth/login.ts" in result.generated_files
         assert "auth/login.test.ts" in result.generated_tests
         assert "auth/login.ts" in result.file_plan.files
 
-    @patch("specanopy.agents.swarm._run_pipeline")
+    @patch("specdiff.agents.swarm._run_pipeline")
     def test_review_fail(self, mock_pipeline, tmp_path):
         specs_dir = _setup_skills_dir(tmp_path)
         mock_pipeline.return_value = {
@@ -162,18 +162,18 @@ class TestRunSwarm:
             ),
         }
 
-        result = run_swarm(_make_node(), SpecanopyConfig(), specs_dir)
+        result = run_swarm(_make_node(), SpecdiffConfig(), specs_dir)
         assert result.review_passed is False
         assert "401" in result.review_feedback
 
     def test_missing_skills(self, tmp_path):
-        specs_dir = tmp_path / ".specanopy"
+        specs_dir = tmp_path / ".specdiff"
         specs_dir.mkdir()
 
         with pytest.raises(FileNotFoundError, match="Missing required skill files"):
-            run_swarm(_make_node(), SpecanopyConfig(), specs_dir)
+            run_swarm(_make_node(), SpecdiffConfig(), specs_dir)
 
-    @patch("specanopy.agents.swarm._run_pipeline")
+    @patch("specdiff.agents.swarm._run_pipeline")
     def test_invalid_json_fails(self, mock_pipeline, tmp_path):
         specs_dir = _setup_skills_dir(tmp_path)
         mock_pipeline.return_value = {
@@ -184,9 +184,9 @@ class TestRunSwarm:
         }
 
         with pytest.raises(ValueError, match="Architect agent returned invalid JSON"):
-            run_swarm(_make_node(), SpecanopyConfig(), specs_dir)
+            run_swarm(_make_node(), SpecdiffConfig(), specs_dir)
 
-    @patch("specanopy.agents.swarm._run_pipeline")
+    @patch("specdiff.agents.swarm._run_pipeline")
     def test_missing_review_output_fails(self, mock_pipeline, tmp_path):
         specs_dir = _setup_skills_dir(tmp_path)
         mock_pipeline.return_value = {
@@ -196,9 +196,9 @@ class TestRunSwarm:
         }
 
         with pytest.raises(ValueError, match="Swarm did not return outputs for: review"):
-            run_swarm(_make_node(), SpecanopyConfig(), specs_dir)
+            run_swarm(_make_node(), SpecdiffConfig(), specs_dir)
 
-    @patch("specanopy.agents.swarm._run_pipeline")
+    @patch("specdiff.agents.swarm._run_pipeline")
     def test_review_feedback_list_is_normalized(self, mock_pipeline, tmp_path):
         specs_dir = _setup_skills_dir(tmp_path)
         mock_pipeline.return_value = {
@@ -208,6 +208,6 @@ class TestRunSwarm:
             "review_result": json.dumps({"passed": False, "feedback": ["a", "b"]}),
         }
 
-        result = run_swarm(_make_node(), SpecanopyConfig(), specs_dir)
+        result = run_swarm(_make_node(), SpecdiffConfig(), specs_dir)
         assert result.review_passed is False
         assert result.review_feedback == "a\nb"

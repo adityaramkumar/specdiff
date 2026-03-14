@@ -102,7 +102,7 @@ export default function App() {
       <header className="app-header">
         <div className="header-content">
           <div className="header-logo">
-            <h1>Specanopy</h1>
+            <h1>Specdiff</h1>
             <span className="badge">Graph</span>
           </div>
           {error && <span className="error-badge">Disconnected</span>}

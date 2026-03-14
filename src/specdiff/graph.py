@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections import defaultdict, deque
 from dataclasses import dataclass, field
 
-from specanopy.types import SpecNode
+from specdiff.types import SpecNode
 
 
 @dataclass

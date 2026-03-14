@@ -8,9 +8,9 @@ from http.server import HTTPServer, SimpleHTTPRequestHandler
 from pathlib import Path
 from typing import Any
 
-from specanopy import hashmap
-from specanopy.graph import build_graph, impact_summary
-from specanopy.parser import discover_specs
+from specdiff import hashmap
+from specdiff.graph import build_graph, impact_summary
+from specdiff.parser import discover_specs
 
 logger = logging.getLogger(__name__)
 
@@ -98,9 +98,9 @@ class GraphUIHandler(SimpleHTTPRequestHandler):
 
 
 def serve_ui(specs_dir: Path, port: int = 8000, open_browser: bool = True):
-    """Start local web server for the Specanopy UI."""
+    """Start local web server for the Specdiff UI."""
 
-    # We will bundle the compiled UI into src/specanopy/ui_dist
+    # We will bundle the compiled UI into src/specdiff/ui_dist
     ui_dist_dir = Path(__file__).parent / "ui_dist"
 
     import os
@@ -108,7 +108,7 @@ def serve_ui(specs_dir: Path, port: int = 8000, open_browser: bool = True):
     if not ui_dist_dir.exists():
         os.makedirs(ui_dist_dir, exist_ok=True)
         placeholder = (
-            "<html><body><h1>Specanopy UI not built yet.</h1>"
+            "<html><body><h1>Specdiff UI not built yet.</h1>"
             "<p>Run npm run build in the ui/ directory.</p></body></html>"
         )
         (ui_dist_dir / "index.html").write_text(placeholder)
@@ -119,7 +119,7 @@ def serve_ui(specs_dir: Path, port: int = 8000, open_browser: bool = True):
     httpd = HTTPServer(("0.0.0.0", port), handler)
     url = f"http://localhost:{port}"
 
-    print(f"Starting Specanopy Graph UI Server at {url}")
+    print(f"Starting Specdiff Graph UI Server at {url}")
     print(f"Serving API from {specs_dir} specs and static files from {ui_dist_dir}")
     print("Press Ctrl+C to stop.")
 
@@ -129,5 +129,5 @@ def serve_ui(specs_dir: Path, port: int = 8000, open_browser: bool = True):
     try:
         httpd.serve_forever()
     except KeyboardInterrupt:
-        print("\\nStopping Specanopy UI Server.")
+        print("\\nStopping Specdiff UI Server.")
         httpd.server_close()

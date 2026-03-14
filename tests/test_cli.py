@@ -7,9 +7,9 @@ from unittest.mock import patch
 
 from click.testing import CliRunner
 
-from specanopy.agents.swarm import REQUIRED_SKILLS
-from specanopy.cli import cli
-from specanopy.types import FilePlan, ReviewResult, SwarmResult
+from specdiff.agents.swarm import REQUIRED_SKILLS
+from specdiff.cli import cli
+from specdiff.types import FilePlan, ReviewResult, SwarmResult
 
 
 def _write_spec(
@@ -30,14 +30,14 @@ def _write_spec(
 
 
 def _setup_project(tmp_path: Path, specs: list[dict], *, with_skill: bool = False) -> Path:
-    """Create a minimal project with .specanopy/config.yaml, skill files, and spec files."""
-    specanopy_dir = tmp_path / ".specanopy"
-    specanopy_dir.mkdir()
-    (specanopy_dir / "config.yaml").write_text(
-        "model: gemini-3.1-flash-lite-preview\noutput_dir: src\nspecs_dir: .specanopy\n"
+    """Create a minimal project with .specdiff/config.yaml, skill files, and spec files."""
+    specdiff_dir = tmp_path / ".specdiff"
+    specdiff_dir.mkdir()
+    (specdiff_dir / "config.yaml").write_text(
+        "model: gemini-3.1-flash-lite-preview\noutput_dir: src\nspecs_dir: .specdiff\n"
     )
 
-    skills_dir = specanopy_dir / "skills"
+    skills_dir = specdiff_dir / "skills"
     skills_dir.mkdir()
     for name in REQUIRED_SKILLS:
         (skills_dir / f"{name}.skill.md").write_text(f"Skill for {name}")
@@ -45,7 +45,7 @@ def _setup_project(tmp_path: Path, specs: list[dict], *, with_skill: bool = Fals
         (skills_dir / "spec-eval.skill.md").write_text("## Role\nYou review specs.\n")
 
     for s in specs:
-        _write_spec(specanopy_dir, s["path"], s["id"], s.get("depends_on"))
+        _write_spec(specdiff_dir, s["path"], s["id"], s.get("depends_on"))
     return tmp_path
 
 
@@ -115,7 +115,7 @@ class TestStatus:
 
 
 class TestBuild:
-    @patch("specanopy.runner.run_swarm", side_effect=_mock_swarm_result)
+    @patch("specdiff.runner.run_swarm", side_effect=_mock_swarm_result)
     def test_updates_hashmap(self, mock_swarm, tmp_path):
         proj = _setup_project(
             tmp_path,
@@ -129,12 +129,12 @@ class TestBuild:
         assert result.exit_code == 0, result.output
         assert "Build complete" in result.output
 
-        hm_path = proj / ".specanopy" / "hash-map.json"
+        hm_path = proj / ".specdiff" / "hash-map.json"
         assert hm_path.exists()
         data = json.loads(hm_path.read_text())
         assert "auth/login" in data
 
-    @patch("specanopy.runner.run_swarm", side_effect=_mock_swarm_result)
+    @patch("specdiff.runner.run_swarm", side_effect=_mock_swarm_result)
     def test_idempotent(self, mock_swarm, tmp_path):
         proj = _setup_project(
             tmp_path,
@@ -149,7 +149,7 @@ class TestBuild:
         assert result.exit_code == 0, result.output
         assert "Everything is up to date" in result.output
 
-    @patch("specanopy.runner.run_swarm", side_effect=_mock_swarm_result_ts)
+    @patch("specdiff.runner.run_swarm", side_effect=_mock_swarm_result_ts)
     def test_writes_language_aware_traceability_headers(self, mock_swarm, tmp_path):
         proj = _setup_project(
             tmp_path,
@@ -165,7 +165,7 @@ class TestBuild:
         assert generated.exists()
         assert generated.read_text().startswith("// generated_from: auth/login")
 
-    @patch("specanopy.runner.run_swarm", side_effect=_mock_swarm_review_fail)
+    @patch("specdiff.runner.run_swarm", side_effect=_mock_swarm_review_fail)
     def test_fails_build_when_swarm_review_fails(self, mock_swarm, tmp_path):
         proj = _setup_project(
             tmp_path,
@@ -178,11 +178,11 @@ class TestBuild:
 
         assert result.exit_code == 1
         assert "review failed" in result.output
-        hm_path = proj / ".specanopy" / "hash-map.json"
+        hm_path = proj / ".specdiff" / "hash-map.json"
         data = json.loads(hm_path.read_text())
         assert "auth/login" not in data
 
-    @patch("specanopy.runner.run_swarm", side_effect=_mock_swarm_result_with_tests)
+    @patch("specdiff.runner.run_swarm", side_effect=_mock_swarm_result_with_tests)
     def test_fails_build_when_generated_tests_have_no_test_command(self, mock_swarm, tmp_path):
         proj = _setup_project(
             tmp_path,
@@ -195,7 +195,7 @@ class TestBuild:
 
         assert result.exit_code == 1
         assert "generated tests but no test_command is configured" in result.output
-        hm_path = proj / ".specanopy" / "hash-map.json"
+        hm_path = proj / ".specdiff" / "hash-map.json"
         data = json.loads(hm_path.read_text())
         assert "auth/login" not in data
 
@@ -213,9 +213,9 @@ class TestImpact:
                 },
             ],
         )
-        from specanopy.parser import parse_spec_file
+        from specdiff.parser import parse_spec_file
 
-        contract = parse_spec_file(proj / ".specanopy" / "contracts" / "schema.spec.md")
+        contract = parse_spec_file(proj / ".specdiff" / "contracts" / "schema.spec.md")
         hm_data = {
             contract.id: {
                 "spec_hash": contract.hash,
@@ -223,7 +223,7 @@ class TestImpact:
                 "generated_at": "",
             }
         }
-        (proj / ".specanopy" / "hash-map.json").write_text(json.dumps(hm_data))
+        (proj / ".specdiff" / "hash-map.json").write_text(json.dumps(hm_data))
 
         runner = CliRunner()
         with runner.isolated_filesystem(temp_dir=tmp_path):
@@ -239,11 +239,11 @@ class TestImpact:
             tmp_path,
             [{"path": "behaviors/auth/login.spec.md", "id": "auth/login"}],
         )
-        from specanopy.parser import parse_spec_file
+        from specdiff.parser import parse_spec_file
 
-        node = parse_spec_file(proj / ".specanopy" / "behaviors" / "auth" / "login.spec.md")
+        node = parse_spec_file(proj / ".specdiff" / "behaviors" / "auth" / "login.spec.md")
         hm_data = {node.id: {"spec_hash": node.hash, "generated_files": [], "generated_at": ""}}
-        (proj / ".specanopy" / "hash-map.json").write_text(json.dumps(hm_data))
+        (proj / ".specdiff" / "hash-map.json").write_text(json.dumps(hm_data))
 
         runner = CliRunner()
         with runner.isolated_filesystem(temp_dir=tmp_path):
@@ -267,7 +267,7 @@ def _mock_review_fail(node, skill, config):
 
 
 class TestReview:
-    @patch("specanopy.cli.review_spec", side_effect=_mock_review_pass)
+    @patch("specdiff.cli.review_spec", side_effect=_mock_review_pass)
     def test_review_pass(self, mock_review, tmp_path):
         proj = _setup_project(
             tmp_path,
@@ -275,7 +275,7 @@ class TestReview:
             with_skill=True,
         )
         _write_spec(
-            proj / ".specanopy",
+            proj / ".specdiff",
             "behaviors/login.spec.md",
             "auth/login",
             status="draft",
@@ -289,7 +289,7 @@ class TestReview:
         assert result.exit_code == 0, result.output
         assert "PASSED" in result.output
 
-    @patch("specanopy.cli.review_spec", side_effect=_mock_review_fail)
+    @patch("specdiff.cli.review_spec", side_effect=_mock_review_fail)
     def test_review_fail_writes_proposal(self, mock_review, tmp_path):
         proj = _setup_project(
             tmp_path,
@@ -297,7 +297,7 @@ class TestReview:
             with_skill=True,
         )
         _write_spec(
-            proj / ".specanopy",
+            proj / ".specdiff",
             "behaviors/login.spec.md",
             "auth/login",
             status="draft",
@@ -311,21 +311,21 @@ class TestReview:
         assert result.exit_code == 1
         assert "FAILED" in result.output
         assert "Suggested revision" in result.output
-        proposed = proj / ".specanopy" / "proposed" / "auth_login.spec.md"
+        proposed = proj / ".specdiff" / "proposed" / "auth_login.spec.md"
         assert proposed.exists()
 
-    @patch("specanopy.runner.run_swarm", side_effect=_mock_swarm_result)
-    @patch("specanopy.cli.review_spec", side_effect=_mock_review_pass)
+    @patch("specdiff.runner.run_swarm", side_effect=_mock_swarm_result)
+    @patch("specdiff.cli.review_spec", side_effect=_mock_review_pass)
     def test_build_reviews_all_stale_specs_when_enabled(self, mock_review, mock_swarm, tmp_path):
         proj = _setup_project(
             tmp_path,
             [{"path": "behaviors/login.spec.md", "id": "auth/login"}],
             with_skill=True,
         )
-        (proj / ".specanopy" / "config.yaml").write_text(
+        (proj / ".specdiff" / "config.yaml").write_text(
             "model: gemini-3.1-flash-lite-preview\n"
             "output_dir: src\n"
-            "specs_dir: .specanopy\n"
+            "specs_dir: .specdiff\n"
             "review_before_build: true\n"
         )
         runner = CliRunner()

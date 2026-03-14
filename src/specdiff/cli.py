@@ -8,29 +8,29 @@ import frontmatter
 import yaml
 from dotenv import load_dotenv
 
-from specanopy import hashmap
-from specanopy.agents.spec_agent import review_spec
-from specanopy.graph import build_graph, cascade, impact_summary
-from specanopy.parser import discover_specs
-from specanopy.runner import execute_swarm_cascade
-from specanopy.skills import load_skill
-from specanopy.types import SpecanopyConfig
+from specdiff import hashmap
+from specdiff.agents.spec_agent import review_spec
+from specdiff.graph import build_graph, cascade, impact_summary
+from specdiff.parser import discover_specs
+from specdiff.runner import execute_swarm_cascade
+from specdiff.skills import load_skill
+from specdiff.types import SpecdiffConfig
 
 SPEC_EVAL_SKILL = "spec-eval"
 
 
-def _load_config(specs_dir: Path) -> SpecanopyConfig:
+def _load_config(specs_dir: Path) -> SpecdiffConfig:
     config_path = specs_dir / "config.yaml"
     if not config_path.exists():
-        return SpecanopyConfig()
+        return SpecdiffConfig()
     raw = yaml.safe_load(config_path.read_text("utf-8")) or {}
-    return SpecanopyConfig(
-        model=raw.get("model", SpecanopyConfig.model),
+    return SpecdiffConfig(
+        model=raw.get("model", SpecdiffConfig.model),
         test_command=raw.get("test_command"),
-        output_dir=raw.get("output_dir", SpecanopyConfig.output_dir),
-        specs_dir=raw.get("specs_dir", SpecanopyConfig.specs_dir),
+        output_dir=raw.get("output_dir", SpecdiffConfig.output_dir),
+        specs_dir=raw.get("specs_dir", SpecdiffConfig.specs_dir),
         review_before_build=raw.get("review_before_build", False),
-        language=raw.get("language", SpecanopyConfig.language),
+        language=raw.get("language", SpecdiffConfig.language),
         test_framework=raw.get("test_framework"),
     )
 
@@ -45,7 +45,7 @@ def _update_spec_status(file_path: str, new_status: str) -> None:
 def _write_proposed_revision(
     specs_dir: Path, node_id: str, revision: str, original_path: str
 ) -> Path:
-    """Write a proposed revision spec to .specanopy/proposed/."""
+    """Write a proposed revision spec to .specdiff/proposed/."""
     proposed_dir = specs_dir / "proposed"
     proposed_path = proposed_dir / f"{node_id.replace('/', '_')}.spec.md"
     proposed_path.parent.mkdir(parents=True, exist_ok=True)
@@ -58,7 +58,7 @@ def _write_proposed_revision(
 
 @click.group()
 def cli() -> None:
-    """Specanopy — spec-driven code generation."""
+    """Specdiff — spec-driven code generation."""
     load_dotenv()
 
 
@@ -66,7 +66,7 @@ def cli() -> None:
 @click.argument("node_id", required=False)
 def build(node_id: str | None) -> None:
     """Generate code from specs. Optionally target a single NODE_ID."""
-    config = _load_config(Path(".specanopy"))
+    config = _load_config(Path(".specdiff"))
     specs_dir = Path(config.specs_dir)
     map = hashmap.load(specs_dir)
 
@@ -102,7 +102,7 @@ def build(node_id: str | None) -> None:
                 click.echo(f"\n  Review failed for {node.id}:")
                 click.echo(f"  {result.feedback}")
                 raise click.ClickException(
-                    f"Spec '{node.id}' failed review. Run `specanopy review` to see suggestions."
+                    f"Spec '{node.id}' failed review. Run `specdiff review` to see suggestions."
                 )
 
     stale_ids = {n.id for n in nodes if hashmap.is_stale(map, n.id, n.hash)}
@@ -122,7 +122,7 @@ def build(node_id: str | None) -> None:
 @cli.command()
 def status() -> None:
     """Show staleness status for all spec nodes."""
-    config = _load_config(Path(".specanopy"))
+    config = _load_config(Path(".specdiff"))
     specs_dir = Path(config.specs_dir)
     map = hashmap.load(specs_dir)
 
@@ -149,7 +149,7 @@ def status() -> None:
 @click.argument("node_id", required=False)
 def impact(node_id: str | None) -> None:
     """Show the blast radius of pending spec changes."""
-    config = _load_config(Path(".specanopy"))
+    config = _load_config(Path(".specdiff"))
     specs_dir = Path(config.specs_dir)
     map = hashmap.load(specs_dir)
 
@@ -189,7 +189,7 @@ def impact(node_id: str | None) -> None:
 @click.argument("node_id", required=False)
 def review(node_id: str | None) -> None:
     """Review specs for quality. Optionally target a single NODE_ID."""
-    config = _load_config(Path(".specanopy"))
+    config = _load_config(Path(".specdiff"))
     specs_dir = Path(config.specs_dir)
 
     nodes = discover_specs(specs_dir)
@@ -231,7 +231,7 @@ def review(node_id: str | None) -> None:
                     f"  Suggested revision written to:\n"
                     f"    {path}\n\n"
                     f"  Review the suggested changes. If they capture your intent,\n"
-                    f"  copy them to your spec and run `specanopy review` again.\n"
+                    f"  copy them to your spec and run `specdiff review` again.\n"
                 )
 
     if any_failed:
@@ -243,19 +243,19 @@ def review(node_id: str | None) -> None:
 @click.option("--no-browser", is_flag=True, help="Don't open the browser automatically")
 def ui(port: int, no_browser: bool) -> None:
     """Launch the interactive graphical UI in your browser."""
-    config = _load_config(Path(".specanopy"))
+    config = _load_config(Path(".specdiff"))
     specs_dir = Path(config.specs_dir)
 
     # We delay this import to avoid circular dependency if `api` imports from `cli`
-    from specanopy.api import serve_ui
+    from specdiff.api import serve_ui
 
     serve_ui(specs_dir, port=port, open_browser=not no_browser)
 
 
 @cli.command()
 def init() -> None:
-    """Initialize a .specanopy directory with a default config."""
-    specs_dir = Path(".specanopy")
+    """Initialize a .specdiff directory with a default config."""
+    specs_dir = Path(".specdiff")
     if specs_dir.exists():
         click.echo(f"Directory {specs_dir} already exists.")
         return
@@ -265,7 +265,7 @@ def init() -> None:
 
     config_yaml = """model: gemini-2.5-flash
 output_dir: src
-specs_dir: .specanopy
+specs_dir: .specdiff
 language: python
 review_before_build: false
 """
@@ -277,7 +277,7 @@ Ensure the spec is completely unambiguous.
 """
     (specs_dir / "skills" / f"{SPEC_EVAL_SKILL}.skill.md").write_text(skill_content)
 
-    click.echo("Initialized empty specanopy project in .specanopy/")
+    click.echo("Initialized empty specdiff project in .specdiff/")
 
 
 @cli.command()
@@ -285,11 +285,11 @@ Ensure the spec is completely unambiguous.
 @click.option("--granularity", default="auto", help="Extraction granularity ('auto' or 'file')")
 def extract(source: str, granularity: str) -> None:
     """Read existing code and generate spec files."""
-    config = _load_config(Path(".specanopy"))
+    config = _load_config(Path(".specdiff"))
     specs_dir = Path(config.specs_dir)
 
     if not specs_dir.exists():
-        click.echo("Specanopy not initialized. Please run `specanopy init` first.")
+        click.echo("Specdiff not initialized. Please run `specdiff init` first.")
         return
 
     src_path = Path(source)
@@ -298,6 +298,6 @@ def extract(source: str, granularity: str) -> None:
         sys.exit(1)
 
     # Delay import so we don't load the LLM unless the command is run
-    from specanopy.extract import generate_specs_from_code
+    from specdiff.extract import generate_specs_from_code
 
     generate_specs_from_code(src_path, specs_dir, config, granularity)

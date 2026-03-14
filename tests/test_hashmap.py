@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import json
 
-from specanopy import hashmap
-from specanopy.types import HashMap, HashMapEntry
+from specdiff import hashmap
+from specdiff.types import HashMap, HashMapEntry
 
 
 class TestLoad:
