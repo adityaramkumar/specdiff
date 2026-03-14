@@ -1,6 +1,6 @@
 ---
 id: behaviors/transform
-version: "1.0.0"
+version: "1.0.1"
 status: approved
 depends_on:
   - contracts/schemas/raw-events
@@ -9,29 +9,19 @@ depends_on:
 
 ## Transform Behavior
 
-### Command
-```
-pipeline transform <staging_dir> --output <transform_dir>
-```
+### Interface
+- Function: `transform(input_dir: str, output_dir: str) -> dict`
+- Returns a summary dict: `{"count": int}`
 
 ### Happy Path
-- Read all events from `staging_dir/valid/events.ndjson`
+- Read all events from `input_dir/valid/events.ndjson`
 - For each event:
-  1. Normalize timestamp to UTC (strip timezone offset)
+  1. Convert timestamp to UTC, strip timezone offset
   2. Derive `date` (YYYY-MM-DD) and `hour` (0-23) from UTC timestamp
-  3. Set `user_id` to `"anonymous"` if null; set `is_anonymous` to `true`/`false`
-  4. Assign `session_id` and `event_sequence` per session assignment rules
+  3. Set `user_id` to `"anonymous"` if null; set `is_anonymous` accordingly
 - Sort all events by `timestamp_utc` ascending
-- Write to `transform_dir/events.ndjson`
-- Print summary: `Transformed {count} events, {session_count} sessions identified`
-- Exit code: 0
-
-### Session Assignment
-- Group events by `user_id`
-- Within each user's events (sorted by timestamp), start a new session when the gap between consecutive events exceeds 30 minutes
-- Session ID: deterministic UUID v5 from namespace `6ba7b810-9dad-11d1-80b4-00c04fd430c8` with name `{user_id}:{session_start_timestamp}`
-- `event_sequence`: 1-indexed position within the session
+- Write to `output_dir/events.ndjson`
 
 ### Error Handling
-- Staging directory not found: print `Error: directory not found: {path}` to stderr, exit code 1
-- No valid events file: print `Error: no valid events found in {path}` to stderr, exit code 1
+- Input directory not found: raise `FileNotFoundError`
+- No valid events file: raise `ValueError("no valid events found")`

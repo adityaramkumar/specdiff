@@ -11,7 +11,7 @@ from specanopy.llm import extract_json
 from specanopy.skills import discover_skills
 from specanopy.types import FilePlan, SpecanopyConfig, SpecNode, SwarmResult
 
-REQUIRED_SKILLS = ("architect", "implementation", "testing", "review")
+REQUIRED_SKILLS = ("architect", "interface", "implementation", "testing", "review")
 
 
 def build_swarm(config: SpecanopyConfig, skill_content: dict[str, str]) -> SequentialAgent:
@@ -21,6 +21,12 @@ def build_swarm(config: SpecanopyConfig, skill_content: dict[str, str]) -> Seque
         model=config.model,
         instruction=skill_content["architect"],
         output_key="file_plan",
+    )
+    interface_planner = LlmAgent(
+        name="interface_planner",
+        model=config.model,
+        instruction=skill_content["interface"],
+        output_key="interface_spec",
     )
     implementation = LlmAgent(
         name="implementation",
@@ -48,7 +54,7 @@ def build_swarm(config: SpecanopyConfig, skill_content: dict[str, str]) -> Seque
 
     return SequentialAgent(
         name="build_pipeline",
-        sub_agents=[architect, parallel, review],
+        sub_agents=[architect, interface_planner, parallel, review],
     )
 
 

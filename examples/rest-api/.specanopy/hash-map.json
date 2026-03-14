@@ -1,52 +1,58 @@
 {
   "contracts/api/users": {
-    "spec_hash": "623765be2b42455f0f1136b616ae54f15c1a70076ed1ffacea8d3919a0cc072d",
+    "spec_hash": "f40252d816057e05a68d187a6823e059435ed25eb34fc5abde3ceba2491cd49a",
     "generated_files": [
-      "src/domain/user/user.entity.ts",
-      "src/domain/user/user.repository.interface.ts",
-      "src/domain/auth/auth.service.ts",
-      "src/interfaces/http/auth.controller.ts",
-      "src/interfaces/http/dto/login.request.dto.ts",
-      "src/interfaces/http/dto/signup.request.dto.ts",
-      "src/tests/auth/login.test.ts",
-      "src/tests/auth/signup.test.ts"
+      "src/types/user.ts",
+      "src/auth/password.utils.ts",
+      "src/auth/auth.service.ts",
+      "src/api/auth.controller.ts",
+      "src/tests/auth/auth.service.test.ts",
+      "src/tests/auth/password.utils.test.ts"
     ],
-    "generated_at": "2026-03-10T09:00:31.849907+00:00"
+    "generated_at": "2026-03-14T21:59:27.234855+00:00"
   },
   "behaviors/auth/login": {
-    "spec_hash": "6ef44ccca1fdd47eeb6fc997de4fe55770e057ebf1548c9da7bdaa3565d448fc",
+    "spec_hash": "3e8460ea156b262964d71466b05a1aee93705931a00932181862872401776894",
     "generated_files": [
-      "src/auth/domain/auth.types.ts",
-      "src/auth/domain/login.service.ts",
-      "src/auth/interface/http/login.validator.ts",
-      "src/auth/interface/http/login.controller.ts",
-      "src/auth/interface/http/auth.routes.ts",
-      "src/tests/auth/login.test.ts"
+      "src/domain/auth/user.store.ts",
+      "src/infrastructure/validation/email.validator.ts",
+      "src/infrastructure/security/jwt.provider.ts",
+      "src/domain/auth/login.service.ts",
+      "src/infrastructure/api/auth.controller.ts",
+      "src/tests/domain/auth/login.service.test.ts",
+      "src/tests/infrastructure/api/auth.controller.test.ts"
     ],
-    "generated_at": "2026-03-10T09:00:31.849970+00:00"
+    "generated_at": "2026-03-14T21:59:27.234888+00:00"
   },
   "behaviors/auth/signup": {
-    "spec_hash": "5f98371bbd0a8e14fceaaed58e8c423bae5ab7d4b60f028b978b8c4b66ee9c16",
+    "spec_hash": "f186382487e04177e71760b73b531d3b0bea1d2d470e71368e2f698403097c3a",
     "generated_files": [
-      "src/domain/signup/signup_repository.interface.ts",
-      "src/domain/signup/signup_validator.ts",
-      "src/domain/signup/signup_service.ts",
-      "src/infrastructure/web/signup_controller.ts",
-      "src/tests/auth/signup.test.ts"
+      "src/domain/signup/signup.types.ts",
+      "src/domain/signup/password.validator.ts",
+      "src/domain/signup/password.validator.test.ts",
+      "src/domain/signup/signup.service.ts",
+      "src/domain/signup/signup.service.test.ts",
+      "src/infrastructure/persistence/user.repository.ts",
+      "src/infrastructure/web/signup.controller.ts",
+      "src/infrastructure/web/signup.controller.test.ts",
+      "src/tests/domain/signup/password.validator.test.ts",
+      "src/tests/domain/signup/signup.service.test.ts",
+      "src/tests/infrastructure/web/signup.controller.test.ts"
     ],
-    "generated_at": "2026-03-10T09:00:31.849980+00:00"
+    "generated_at": "2026-03-14T21:59:27.234892+00:00"
   },
   "behaviors/users/profile": {
-    "spec_hash": "a25b2262d0a818a63a621dd337eaaba75be4ca24b3d5ca3c08360664e5cc07a7",
+    "spec_hash": "0b617acb52c2f132b799bc16470845b2594558e0726d102a13875aa879178b29",
     "generated_files": [
       "src/domain/user.ts",
       "src/domain/user.repository.ts",
-      "src/services/user.service.ts",
-      "src/controllers/user.controller.ts",
-      "src/routes/user.routes.ts",
-      "src/tests/api/users/get_profile.test.ts",
-      "src/tests/api/users/update_profile.test.ts"
+      "src/infrastructure/in-memory-user.repository.ts",
+      "src/application/get-user.service.ts",
+      "src/application/update-user.service.ts",
+      "src/infrastructure/api/users.controller.ts",
+      "src/tests/application/get-user.service.test.ts",
+      "src/tests/application/update-user.service.test.ts"
     ],
-    "generated_at": "2026-03-10T09:00:31.849983+00:00"
+    "generated_at": "2026-03-14T21:59:27.234893+00:00"
   }
 }

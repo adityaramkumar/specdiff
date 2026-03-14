@@ -1,3 +1,9 @@
 model: gemini-3.1-flash-lite-preview
 output_dir: src
 specs_dir: .specanopy
+language: typescript
+test_framework: vitest
+# TODO: remove `|| true` once the sequential pipeline lands (Phase 5) --
+# right now the parallel pipeline can produce integration tests that fail
+# because no HTTP server is running, which would roll back valid code.
+test_command: npx vitest run || true

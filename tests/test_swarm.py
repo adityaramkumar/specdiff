@@ -40,12 +40,13 @@ class TestBuildSwarm:
         pipeline = build_swarm(config, _make_skills())
 
         assert pipeline.name == "build_pipeline"
-        assert len(pipeline.sub_agents) == 3
+        assert len(pipeline.sub_agents) == 4
         assert pipeline.sub_agents[0].name == "architect"
-        assert pipeline.sub_agents[1].name == "generators"
-        assert pipeline.sub_agents[2].name == "review"
+        assert pipeline.sub_agents[1].name == "interface_planner"
+        assert pipeline.sub_agents[2].name == "generators"
+        assert pipeline.sub_agents[3].name == "review"
 
-        parallel = pipeline.sub_agents[1]
+        parallel = pipeline.sub_agents[2]
         assert len(parallel.sub_agents) == 2
         sub_names = {a.name for a in parallel.sub_agents}
         assert sub_names == {"implementation", "testing"}

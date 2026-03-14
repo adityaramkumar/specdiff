@@ -1,6 +1,6 @@
 ---
 id: behaviors/convert
-version: "1.0.0"
+version: "1.0.1"
 status: approved
 depends_on:
   - contracts/formats/csv
@@ -9,26 +9,20 @@ depends_on:
 
 ## Convert Behavior
 
-### Command
-```
-csvjson <input.csv> [output.json]
-```
+### Interface
+- Function: `convert(input_path: str, output_path: str | None, detect_types: bool, compact: bool) -> str`
+- Read CSV from `input_path`, convert to JSON
+- If `output_path` is provided, write to that file and return the JSON string
+- If `output_path` is None, just return the JSON string
 
 ### Happy Path
-- Read CSV from `input.csv`
-- Parse according to the CSV format contract
+- Read and parse the CSV file according to the CSV format contract
 - Convert each row to a JSON object using column headers as keys
-- Write JSON array to `output.json` (or stdout if no output file given)
-- Print to stderr: `Converted {N} rows from {input} to {output}`
-- Exit code: 0
+- All values are strings by default
+- If `detect_types` is True, apply type detection per the JSON format contract
+- Write JSON array to output (pretty-printed with 2-space indent, or compact if flag is set)
 
 ### Error Handling
-- Input file not found: print `Error: file not found: {path}` to stderr, exit code 1
-- Input file is empty (0 bytes): print `Error: empty file: {path}` to stderr, exit code 1
-- Malformed CSV (unclosed quote): print `Error: malformed CSV at line {N}: unclosed quote` to stderr, exit code 1
-- Duplicate column names: print `Error: duplicate column name: {name}` to stderr, exit code 1
-- File exceeds 100 MB: print `Error: file too large: {size} bytes (max 100 MB)` to stderr, exit code 1
-
-### Flags
-- `--detect-types`: enable type detection per the JSON format contract
-- `--compact`: output compact JSON (no indentation)
+- File not found: raise `FileNotFoundError`
+- Empty file: raise `ValueError("empty file")`
+- Malformed CSV: raise `ValueError` with descriptive message

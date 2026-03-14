@@ -1,6 +1,6 @@
 ---
 id: behaviors/backend/crud
-version: "1.0.0"
+version: "1.0.1"
 status: approved
 depends_on:
   - contracts/api/todos
@@ -24,9 +24,8 @@ depends_on:
 
 ### Update
 - Accept partial updates: `title` and/or `completed`
-- Update `updated_at` to current UTC timestamp on any change
+- Update `updated_at` to current UTC timestamp
 - Return the full updated todo with HTTP 200
-- Do not allow updating `id`, `created_at`
 
 ### Delete
 - Remove todo from storage
@@ -35,4 +34,3 @@ depends_on:
 
 ### Edge Cases
 - Creating a todo with title " " (whitespace only) returns 422 with `{ "error": "title_required" }`
-- Updating with an empty object (no fields) returns the todo unchanged with HTTP 200

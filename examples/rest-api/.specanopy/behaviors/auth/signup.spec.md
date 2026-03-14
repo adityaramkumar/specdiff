@@ -18,3 +18,4 @@ depends_on:
 - Invalid email format: return HTTP 422 with `{ "error": "invalid_email_format" }`
 - Weak password: return HTTP 422 with `{ "error": "password_too_weak" }`
 - Email already registered: return HTTP 409 with `{ "error": "email_already_registered" }`
+- Any unexpected error: return HTTP 500 with `{ "error": "internal_error" }`
