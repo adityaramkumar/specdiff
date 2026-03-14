@@ -80,6 +80,24 @@ These examples are primarily for inspecting generated structure and spec relatio
 
 Skill files are shared across examples via symlinks from each example's `.specanopy/skills/` to `examples/shared-skills/`.
 
+## How to Retrofit an Existing Codebase
+
+Specanopy is designed for spec-first development, but you can bootstrap it onto a larger, existing project using the Graph UI.
+
+1. **Initialize Config:** Create a `.specanopy/config.yaml` at your project root.
+2. **Reverse-Engineer Specs:** Use an AI coding assistant (like Cursor, Copilot, or Claude) to read your existing code and generate Markdown specs for your core features. Place these in `.specanopy/behaviors/` or `.specanopy/contracts/`.
+3. **Link the Graph:** Ensure each generated spec has proper YAML frontmatter with `id`, `version`, and crucially, a `depends_on` array linking it to other specs.
+    ```yaml
+    ---
+    id: behaviors/user_authentication
+    version: 1.0.0
+    parent: behaviors
+    depends_on:
+      - contracts/database/users_table
+    ---
+    ```
+4. **Visualize:** Run `specanopy ui` and open `localhost:8000`. As you add more spec files and link them, the interactive graph will automatically update, allowing you to map out your system architecture visually before you start using Specanopy for future code generation.
+
 ## Commands
 
 ### `specanopy build [node_id]`
@@ -142,6 +160,17 @@ Reviewing behaviors/auth/login...
 ```
 
 If a spec fails, a suggested revision is written to `.specanopy/proposed/` for you to review and adopt.
+
+### `specanopy ui`
+
+Launch an interactive, visual graph of your specs in the browser. 
+
+```
+$ specanopy ui --port 8000
+Starting Specanopy Graph UI Server at http://localhost:8000
+```
+
+The UI displays the dependency graph, visualizes stale/current status, and shows the cascade depth blast radius for any potential changes. It automatically polls for changes as you edit specs.
 
 ## Configuration
 

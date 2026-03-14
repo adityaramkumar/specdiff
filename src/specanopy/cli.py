@@ -236,3 +236,66 @@ def review(node_id: str | None) -> None:
 
     if any_failed:
         sys.exit(1)
+
+
+@cli.command()
+@click.option("--port", default=8000, help="Port to run the UI server on")
+@click.option("--no-browser", is_flag=True, help="Don't open the browser automatically")
+def ui(port: int, no_browser: bool) -> None:
+    """Launch the interactive graphical UI in your browser."""
+    config = _load_config(Path(".specanopy"))
+    specs_dir = Path(config.specs_dir)
+    
+    # We delay this import to avoid circular dependency if `api` imports from `cli`
+    from specanopy.api import serve_ui
+    serve_ui(specs_dir, port=port, open_browser=not no_browser)
+
+
+@cli.command()
+def init() -> None:
+    """Initialize a .specanopy directory with a default config."""
+    specs_dir = Path(".specanopy")
+    if specs_dir.exists():
+        click.echo(f"Directory {specs_dir} already exists.")
+        return
+
+    specs_dir.mkdir()
+    (specs_dir / "skills").mkdir()
+    
+    config_yaml = """model: gemini-2.5-flash
+output_dir: src
+specs_dir: .specanopy
+language: python
+review_before_build: false
+"""
+    (specs_dir / "config.yaml").write_text(config_yaml)
+    
+    # Placeholder skill
+    skill_content = """# spec-eval.skill.md
+Ensure the spec is completely unambiguous.
+"""
+    (specs_dir / "skills" / f"{SPEC_EVAL_SKILL}.skill.md").write_text(skill_content)
+    
+    click.echo("Initialized empty specanopy project in .specanopy/")
+
+
+@cli.command()
+@click.option("--source", default=".", help="Directory to read code from")
+@click.option("--granularity", default="auto", help="Extraction granularity ('auto' or 'file')")
+def extract(source: str, granularity: str) -> None:
+    """Read existing code and generate spec files."""
+    config = _load_config(Path(".specanopy"))
+    specs_dir = Path(config.specs_dir)
+    
+    if not specs_dir.exists():
+        click.echo("Specanopy not initialized. Please run `specanopy init` first.")
+        return
+
+    src_path = Path(source)
+    if not src_path.exists():
+        click.echo(f"Source directory {source} does not exist.")
+        sys.exit(1)
+
+    # Delay import so we don't load the LLM unless the command is run
+    from specanopy.extract import generate_specs_from_code
+    generate_specs_from_code(src_path, specs_dir, config, granularity)
