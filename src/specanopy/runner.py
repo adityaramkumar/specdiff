@@ -122,7 +122,8 @@ def execute_swarm_cascade(
     specs_dir: Path,
 ) -> bool:
     """Build nodes using the multi-agent swarm pipeline."""
-    if config.test_command:
+    has_existing_files = any(entry.generated_files for entry in map.nodes.values())
+    if config.test_command and has_existing_files:
         baseline_ok, _ = run_tests(config)
         if not baseline_ok:
             click.echo(

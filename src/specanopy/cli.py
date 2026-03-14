@@ -30,6 +30,8 @@ def _load_config(specs_dir: Path) -> SpecanopyConfig:
         output_dir=raw.get("output_dir", SpecanopyConfig.output_dir),
         specs_dir=raw.get("specs_dir", SpecanopyConfig.specs_dir),
         review_before_build=raw.get("review_before_build", False),
+        language=raw.get("language", SpecanopyConfig.language),
+        test_framework=raw.get("test_framework"),
     )
 
 

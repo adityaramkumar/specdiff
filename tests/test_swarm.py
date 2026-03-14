@@ -6,7 +6,7 @@ from unittest.mock import patch
 
 import pytest
 
-from specanopy.agents.swarm import REQUIRED_SKILLS, build_swarm, run_swarm
+from specanopy.agents.swarm import REQUIRED_SKILLS, _build_prompt, build_swarm, run_swarm
 from specanopy.types import SpecanopyConfig, SpecNode
 
 
@@ -49,6 +49,84 @@ class TestBuildSwarm:
         assert len(parallel.sub_agents) == 2
         sub_names = {a.name for a in parallel.sub_agents}
         assert sub_names == {"implementation", "testing"}
+
+
+class TestBuildPrompt:
+    def test_includes_language(self):
+        prompt = _build_prompt(_make_node(), language="typescript")
+        assert "Language: typescript" in prompt
+
+    def test_includes_test_framework(self):
+        prompt = _build_prompt(_make_node(), language="python", test_framework="pytest")
+        assert "Language: python" in prompt
+        assert "Test Framework: pytest" in prompt
+
+    def test_omits_test_framework_when_none(self):
+        prompt = _build_prompt(_make_node(), language="python", test_framework=None)
+        assert "Test Framework:" not in prompt
+
+    def test_default_language_is_python(self):
+        prompt = _build_prompt(_make_node())
+        assert "Language: python" in prompt
+
+    def test_includes_dependency_context(self):
+        dep = SpecNode(
+            id="contracts/api",
+            version="1.0.0",
+            status="approved",
+            hash="def456",
+            content="## API Contract",
+            file_path="contracts/api.spec.md",
+        )
+        prompt = _build_prompt(_make_node(), [dep], language="typescript")
+        assert "DEPENDENCY: contracts/api" in prompt
+        assert "API Contract" in prompt
+
+
+class TestLanguageResolution:
+    @patch("specanopy.agents.swarm._run_pipeline")
+    def test_spec_language_overrides_config(self, mock_pipeline, tmp_path):
+        specs_dir = _setup_skills_dir(tmp_path)
+        mock_pipeline.return_value = {
+            "file_plan": "{}",
+            "generated_code": "{}",
+            "generated_tests": "{}",
+            "review_result": json.dumps({"passed": True, "feedback": "ok"}),
+        }
+
+        node = SpecNode(
+            id="test/example",
+            version="1.0.0",
+            status="approved",
+            hash="abc123",
+            content="## Example",
+            file_path=".specanopy/test/example.spec.md",
+            language="typescript",
+        )
+        config = SpecanopyConfig(language="python", test_framework="pytest")
+        run_swarm(node, config, specs_dir)
+
+        call_args = mock_pipeline.call_args
+        prompt = call_args[0][1]
+        assert "Language: typescript" in prompt
+
+    @patch("specanopy.agents.swarm._run_pipeline")
+    def test_config_language_used_when_no_spec_override(self, mock_pipeline, tmp_path):
+        specs_dir = _setup_skills_dir(tmp_path)
+        mock_pipeline.return_value = {
+            "file_plan": "{}",
+            "generated_code": "{}",
+            "generated_tests": "{}",
+            "review_result": json.dumps({"passed": True, "feedback": "ok"}),
+        }
+
+        config = SpecanopyConfig(language="typescript", test_framework="vitest")
+        run_swarm(_make_node(), config, specs_dir)
+
+        call_args = mock_pipeline.call_args
+        prompt = call_args[0][1]
+        assert "Language: typescript" in prompt
+        assert "Test Framework: vitest" in prompt
 
 
 class TestRunSwarm:

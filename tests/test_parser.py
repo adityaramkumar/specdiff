@@ -82,6 +82,34 @@ class TestParseSpecFile:
 
         assert parse_spec_file(f1).hash != parse_spec_file(f2).hash
 
+    def test_language_field_parsed(self, tmp_path):
+        f = tmp_path / "example.spec.md"
+        f.write_text(
+            "---\nid: test/example\nversion: '1.0.0'\nstatus: approved\n"
+            "language: typescript\n---\n\n## Body\n"
+        )
+        node = parse_spec_file(f)
+        assert node.language == "typescript"
+
+    def test_language_default_is_none(self, tmp_path):
+        f = tmp_path / "example.spec.md"
+        f.write_text("---\nid: test/example\nversion: '1.0.0'\nstatus: approved\n---\n\n## Body\n")
+        node = parse_spec_file(f)
+        assert node.language is None
+
+    def test_language_change_affects_hash(self, tmp_path):
+        body = "\n## Same body\n"
+
+        f1 = tmp_path / "v1.spec.md"
+        f1.write_text(f"---\nid: a\nversion: '1.0.0'\nstatus: draft\n---\n{body}")
+
+        f2 = tmp_path / "v2.spec.md"
+        f2.write_text(
+            f"---\nid: a\nversion: '1.0.0'\nstatus: draft\nlanguage: typescript\n---\n{body}"
+        )
+
+        assert parse_spec_file(f1).hash != parse_spec_file(f2).hash
+
 
 class TestDiscoverSpecs:
     def test_finds_nested_specs(self, tmp_path):

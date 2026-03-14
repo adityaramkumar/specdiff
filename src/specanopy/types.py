@@ -13,6 +13,7 @@ class SpecNode:
     file_path: str
     parent: str | None = None
     depends_on: list[str] = field(default_factory=list)
+    language: str | None = None
 
 
 @dataclass
@@ -56,6 +57,8 @@ class SpecanopyConfig:
     output_dir: str = "src"
     specs_dir: str = ".specanopy"
     review_before_build: bool = False
+    language: str = "python"
+    test_framework: str | None = None
 
 
 @dataclass

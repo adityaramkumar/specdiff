@@ -52,14 +52,24 @@ def build_swarm(config: SpecanopyConfig, skill_content: dict[str, str]) -> Seque
     )
 
 
-def _build_prompt(node: SpecNode, dep_specs: list[SpecNode] | None = None) -> str:
+def _build_prompt(
+    node: SpecNode,
+    dep_specs: list[SpecNode] | None = None,
+    *,
+    language: str = "python",
+    test_framework: str | None = None,
+) -> str:
     dep_context = ""
     for dep in dep_specs or []:
         dep_context += f"\n--- DEPENDENCY: {dep.id} ---\n{dep.content}\n--- END DEPENDENCY ---\n"
 
+    framework_line = f"Test Framework: {test_framework}\n" if test_framework else ""
+
     return (
         f"Spec ID: {node.id}\n"
-        f"Version: {node.version}\n\n"
+        f"Version: {node.version}\n"
+        f"Language: {language}\n"
+        f"{framework_line}\n"
         f"--- SPEC CONTENT ---\n{node.content}\n--- END SPEC ---\n"
         f"{dep_context}"
     )
@@ -135,7 +145,8 @@ def run_swarm(
         )
 
     pipeline = build_swarm(config, skills)
-    prompt = _build_prompt(node, dep_specs)
+    language = node.language or config.language
+    prompt = _build_prompt(node, dep_specs, language=language, test_framework=config.test_framework)
     outputs = asyncio.run(_run_pipeline(pipeline, prompt))
 
     required_outputs = {

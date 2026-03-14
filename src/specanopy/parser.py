@@ -39,6 +39,7 @@ def parse_spec_file(file_path: Path) -> SpecNode:
         file_path=str(file_path),
         parent=meta.get("parent"),
         depends_on=meta.get("depends_on", []),
+        language=meta.get("language"),
     )
 
 
