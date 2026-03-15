@@ -80,23 +80,3 @@ class SwarmResult:
     generated_tests: dict[str, str] = field(default_factory=dict)
     review_passed: bool = True
     review_feedback: str = ""
-
-
-@dataclass
-class RunMetrics:
-    llm_calls: int = 0
-    input_tokens: int = 0
-    output_tokens: int = 0
-    wall_clock_seconds: float = 0.0
-    compiles: bool | None = None
-    tests_pass: bool | None = None
-    tests_total: int = 0
-    tests_passed: int = 0
-    files_generated: int = 0
-
-
-@dataclass
-class EvalResult:
-    task: str
-    specdiff: RunMetrics = field(default_factory=RunMetrics)
-    baseline: RunMetrics = field(default_factory=RunMetrics)

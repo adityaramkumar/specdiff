@@ -172,31 +172,6 @@ Starting Specdiff Graph UI Server at http://localhost:8000
 
 The UI displays the dependency graph, visualizes stale/current status, and shows the cascade depth blast radius for any potential changes. It automatically polls for changes as you edit specs.
 
-### `specdiff eval --task "..."`
-
-Compare spec-driven generation against a raw single-prompt baseline on the same task. Measures LLM calls, token usage, latency, and whether the output compiles.
-
-```
-$ specdiff eval --task "Port this library to Go"
-Task: Port this library to Go
-
-Running with specs (specdiff swarm)...
-  Done. 5 files generated.
-
-Running without specs (single prompt)...
-  Done. 3 files generated.
-
-+--------------+------------+---------------+
-|    Metric    | With Specs | Without Specs |
-+--------------+------------+---------------+
-|  LLM Calls   |     8      |       1       |
-| Tokens (in)  |  12,400    |    45,200     |
-| Tokens (out) |   8,300    |    38,100     |
-|   Latency    |   14.2s    |     22.8s     |
-|  Compiles?   |    YES     |      NO       |
-+--------------+------------+---------------+
-```
-
 ### `specdiff extract [source]`
 
 Read existing code and generate spec files. This is useful for reverse-engineering an existing codebase into Specdiff specs.
