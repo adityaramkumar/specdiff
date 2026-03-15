@@ -369,7 +369,8 @@ def eval_cmd(task_desc: str, source_dir: str, output_dir: str) -> None:
     spec_metrics, spec_files = run_specdiff_eval(nodes, config, specs_dir)
     spec_metrics.files_generated = len(spec_files)
     spec_metrics.compiles = check_compiles(spec_files, config.language)
-    spec_metrics.tests_pass, spec_metrics.tests_total, spec_metrics.tests_passed = check_tests(spec_files, config.language)
+    spec_test = check_tests(spec_files, config.language)
+    spec_metrics.tests_pass, spec_metrics.tests_total, spec_metrics.tests_passed = spec_test
     click.echo(f"  Done. {len(spec_files)} files generated.\n")
 
     # Run baseline (raw source code, single prompt)
@@ -377,7 +378,8 @@ def eval_cmd(task_desc: str, source_dir: str, output_dir: str) -> None:
     base_metrics, base_files = run_baseline(task_desc, raw_source, config.model)
     base_metrics.files_generated = len(base_files)
     base_metrics.compiles = check_compiles(base_files, config.language)
-    base_metrics.tests_pass, base_metrics.tests_total, base_metrics.tests_passed = check_tests(base_files, config.language)
+    base_test = check_tests(base_files, config.language)
+    base_metrics.tests_pass, base_metrics.tests_total, base_metrics.tests_passed = base_test
     click.echo(f"  Done. {len(base_files)} files generated.\n")
 
     # Write generated files to disk
