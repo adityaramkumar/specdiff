@@ -69,7 +69,7 @@ def build(node_id: str | None, no_review: bool) -> None:
     """Generate code from specs. Optionally target a single NODE_ID."""
     config = _load_config(Path(".specdiff"))
     specs_dir = Path(config.specs_dir)
-    map = hashmap.load(specs_dir)
+    hm = hashmap.load(specs_dir)
 
     nodes = discover_specs(specs_dir)
     if not nodes:
@@ -85,7 +85,7 @@ def build(node_id: str | None, no_review: bool) -> None:
     else:
         candidates = nodes
 
-    stale = [n for n in candidates if hashmap.is_stale(map, n.id, n.hash)]
+    stale = [n for n in candidates if hashmap.is_stale(hm, n.id, n.hash)]
     if not stale:
         click.echo("Everything is up to date.")
         return
@@ -106,17 +106,17 @@ def build(node_id: str | None, no_review: bool) -> None:
                     f"Spec '{node.id}' failed review. Run `specdiff review` to see suggestions."
                 )
 
-    stale_ids = {n.id for n in nodes if hashmap.is_stale(map, n.id, n.hash)}
+    stale_ids = {n.id for n in nodes if hashmap.is_stale(hm, n.id, n.hash)}
     ordered_ids = cascade(graph, [n.id for n in stale], stale_ids=stale_ids)
     ordered_nodes = [graph.nodes[nid] for nid in ordered_ids]
 
     click.echo(f"Building {len(ordered_nodes)} node(s)...\n")
 
-    ok = execute_swarm_cascade(ordered_nodes, config, map, graph, specs_dir, skip_review=no_review)
+    ok = execute_swarm_cascade(ordered_nodes, config, hm, graph, specs_dir, skip_review=no_review)
 
     if not ok:
         sys.exit(1)
-    hashmap.save(specs_dir, map)
+    hashmap.save(specs_dir, hm)
     click.echo("\nBuild complete.")
 
 
@@ -125,7 +125,7 @@ def status() -> None:
     """Show staleness status for all spec nodes."""
     config = _load_config(Path(".specdiff"))
     specs_dir = Path(config.specs_dir)
-    map = hashmap.load(specs_dir)
+    hm = hashmap.load(specs_dir)
 
     nodes = discover_specs(specs_dir)
     if not nodes:
@@ -136,7 +136,7 @@ def status() -> None:
     click.echo("-" * 60)
 
     for node in nodes:
-        entry = map.nodes.get(node.id)
+        entry = hm.nodes.get(node.id)
         if entry is None:
             label = "new"
         elif entry.spec_hash != node.hash:
@@ -152,7 +152,7 @@ def impact(node_id: str | None) -> None:
     """Show the blast radius of pending spec changes."""
     config = _load_config(Path(".specdiff"))
     specs_dir = Path(config.specs_dir)
-    map = hashmap.load(specs_dir)
+    hm = hashmap.load(specs_dir)
 
     nodes = discover_specs(specs_dir)
     if not nodes:
@@ -161,7 +161,7 @@ def impact(node_id: str | None) -> None:
 
     graph = build_graph(nodes)
 
-    stale = [n for n in nodes if hashmap.is_stale(map, n.id, n.hash)]
+    stale = [n for n in nodes if hashmap.is_stale(hm, n.id, n.hash)]
     if not stale:
         click.echo("Everything is up to date. No impact.")
         return

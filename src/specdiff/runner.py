@@ -117,14 +117,14 @@ def _write_swarm_files(
 def execute_swarm_cascade(
     ordered_nodes: list[SpecNode],
     config: SpecdiffConfig,
-    map: HashMap,
+    hm: HashMap,
     graph: SpecGraph,
     specs_dir: Path,
     *,
     skip_review: bool = False,
 ) -> bool:
     """Build nodes using the multi-agent swarm pipeline."""
-    has_existing_files = any(entry.generated_files for entry in map.nodes.values())
+    has_existing_files = any(entry.generated_files for entry in hm.nodes.values())
     if config.test_command and has_existing_files:
         baseline_ok, _ = run_tests(config)
         if not baseline_ok:
@@ -136,7 +136,7 @@ def execute_swarm_cascade(
 
     all_prev_files: list[str] = []
     for node in ordered_nodes:
-        entry = map.nodes.get(node.id)
+        entry = hm.nodes.get(node.id)
         if entry:
             all_prev_files.extend(entry.generated_files)
 
@@ -199,5 +199,5 @@ def execute_swarm_cascade(
 
     clean_backups(specs_dir)
     for node in ordered_nodes:
-        hashmap.update(map, node.id, node.hash, all_written[node.id])
+        hashmap.update(hm, node.id, node.hash, all_written[node.id])
     return True

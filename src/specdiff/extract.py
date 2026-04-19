@@ -128,6 +128,14 @@ Output ONLY valid JSON containing the array of spec objects.
             f"Failed to parse contracts from LLM: {e}\n\nResponse:\n{response.text}"
         ) from e
 
+    if not isinstance(contracts, list) or not all(
+        isinstance(c, dict) and "path" in c and "content" in c for c in contracts
+    ):
+        raise click.ClickException(
+            "LLM returned unexpected structure for contracts "
+            "(expected a list of {path, content} objects)."
+        )
+
     for c in contracts:
         spec_path = specs_dir / c["path"]
         if not spec_path.name.endswith(".spec.md"):
@@ -176,6 +184,14 @@ Output ONLY valid JSON containing the array of spec objects
             f"Failed to parse behaviors from LLM: {e}\n\nResponse:\n{response2.text}"
         ) from e
 
+    if not isinstance(behaviors, list) or not all(
+        isinstance(b, dict) and "path" in b and "content" in b for b in behaviors
+    ):
+        raise click.ClickException(
+            "LLM returned unexpected structure for behaviors "
+            "(expected a list of {path, content} objects)."
+        )
+
     for b in behaviors:
         spec_path = specs_dir / b["path"]
         if not spec_path.name.endswith(".spec.md"):
@@ -220,6 +236,9 @@ def _extract_file_by_file(
 
             if isinstance(data, list) and len(data) > 0:
                 data = data[0]
+
+            if not isinstance(data, dict) or "path" not in data or "content" not in data:
+                raise ValueError("LLM returned unexpected structure (expected {path, content}).")
 
             out_path = specs_dir / data["path"]
             out_path.parent.mkdir(parents=True, exist_ok=True)

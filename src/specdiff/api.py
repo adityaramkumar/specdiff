@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import threading
 import webbrowser
 from http.server import HTTPServer, SimpleHTTPRequestHandler
@@ -101,8 +102,6 @@ def serve_ui(specs_dir: Path, port: int = 8000, open_browser: bool = True):
 
     # We will bundle the compiled UI into src/specdiff/ui_dist
     ui_dist_dir = Path(__file__).parent / "ui_dist"
-
-    import os
 
     if not ui_dist_dir.exists():
         os.makedirs(ui_dist_dir, exist_ok=True)

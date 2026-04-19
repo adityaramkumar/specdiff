@@ -100,7 +100,7 @@ def generate_content(
     return _generate_openai_compat(model, provider_config, contents, system_instruction)
 
 
-def extract_json(text: str) -> dict:
+def extract_json(text: str) -> dict | list:
     """Extract a JSON object/array from LLM output, stripping fences and prose."""
     stripped = text.strip()
 
