@@ -1,12 +1,8 @@
 from __future__ import annotations
 
 import os
-from pathlib import Path
-from unittest.mock import patch, MagicMock
 
-import pytest
-
-from specdiff.extract import _collect_source_files, _EXTENSIONS, _IGNORE_DIRS
+from specdiff.extract import _collect_source_files
 
 
 class TestCollectSourceFiles:

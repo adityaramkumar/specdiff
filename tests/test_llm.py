@@ -1,12 +1,13 @@
 from __future__ import annotations
 
-import pytest
+import json
+import os
 from unittest.mock import patch
 
 import click
+import pytest
 
 from specdiff.llm import (
-    PROVIDERS,
     ProviderConfig,
     _get_api_key,
     detect_provider,
@@ -22,27 +23,28 @@ class TestExtractJson:
         assert extract_json("[1, 2, 3]") == [1, 2, 3]
 
     def test_fenced_json(self):
-        text = "```\n{\"key\": \"value\"}\n```"
+        text = '```\n{"key": "value"}\n```'
         assert extract_json(text) == {"key": "value"}
 
     def test_fenced_json_with_language_tag(self):
-        text = "```json\n{\"key\": \"value\"}\n```"
+        text = '```json\n{"key": "value"}\n```'
         assert extract_json(text) == {"key": "value"}
 
     def test_prose_wrapped_json(self):
-        text = "Here is the result:\n{\"key\": \"value\"}"
+        text = 'Here is the result:\n{"key": "value"}'
         assert extract_json(text) == {"key": "value"}
 
     def test_nested_json(self):
         data = {"outer": {"inner": "value"}, "list": [1, 2, 3]}
-        import json
         assert extract_json(json.dumps(data)) == data
 
     def test_whitespace_stripped(self):
         assert extract_json('  {"a": 1}  ') == {"a": 1}
 
     def test_invalid_json_raises(self):
-        with pytest.raises(Exception):
+        import json as _json
+
+        with pytest.raises(_json.JSONDecodeError):
             extract_json("not json at all")
 
     def test_fenced_empty_object(self):
@@ -87,18 +89,14 @@ class TestGetApiKey:
 
     def test_raises_click_exception_when_missing(self):
         config = ProviderConfig(api_key_env="MISSING_SPECDIFF_KEY_XYZ")
-        with patch.dict("os.environ", {}, clear=False):
-            import os
-            os.environ.pop("MISSING_SPECDIFF_KEY_XYZ", None)
-            with pytest.raises(click.ClickException) as exc_info:
-                _get_api_key(config)
-            assert "MISSING_SPECDIFF_KEY_XYZ" in str(exc_info.value.format_message())
+        os.environ.pop("MISSING_SPECDIFF_KEY_XYZ", None)
+        with pytest.raises(click.ClickException) as exc_info:
+            _get_api_key(config)
+        assert "MISSING_SPECDIFF_KEY_XYZ" in str(exc_info.value.format_message())
 
     def test_error_message_includes_export_hint(self):
         config = ProviderConfig(api_key_env="MY_TEST_KEY_FOR_HINT")
-        with patch.dict("os.environ", {}, clear=False):
-            import os
-            os.environ.pop("MY_TEST_KEY_FOR_HINT", None)
-            with pytest.raises(click.ClickException) as exc_info:
-                _get_api_key(config)
-            assert "export" in exc_info.value.format_message().lower()
+        os.environ.pop("MY_TEST_KEY_FOR_HINT", None)
+        with pytest.raises(click.ClickException) as exc_info:
+            _get_api_key(config)
+        assert "export" in exc_info.value.format_message().lower()

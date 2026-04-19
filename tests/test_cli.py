@@ -131,7 +131,11 @@ class TestStatus:
             [{"path": "behaviors/auth/login.spec.md", "id": "auth/login"}],
         )
         hm_data = {
-            "auth/login": {"spec_hash": "oldhash_that_wont_match", "generated_files": [], "generated_at": ""}
+            "auth/login": {
+                "spec_hash": "oldhash_that_wont_match",
+                "generated_files": [],
+                "generated_at": "",
+            }
         }
         (proj / ".specdiff" / "hash-map.json").write_text(json.dumps(hm_data))
 
@@ -220,7 +224,10 @@ class TestBuild:
             with_skill=True,
         )
         (proj / ".specdiff" / "config.yaml").write_text(
-            "model: gemini-2.5-flash\noutput_dir: src\nspecs_dir: .specdiff\nreview_before_build: true\n"
+            "model: gemini-2.5-flash\n"
+            "output_dir: src\n"
+            "specs_dir: .specdiff\n"
+            "review_before_build: true\n"
         )
         runner = CliRunner()
         with runner.isolated_filesystem(temp_dir=tmp_path):

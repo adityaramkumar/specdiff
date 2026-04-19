@@ -1,23 +1,27 @@
 from __future__ import annotations
 
-import json
 from pathlib import Path
 from unittest.mock import MagicMock, patch
-
-import pytest
 
 from specdiff.agents.swarm import REQUIRED_SKILLS
 from specdiff.graph import build_graph
 from specdiff.runner import (
     BACKUP_DIR,
+    _traceability_header,
     backup,
     clean_backups,
     execute_swarm_cascade,
     restore,
     run_tests,
-    _traceability_header,
 )
-from specdiff.types import FilePlan, HashMap, HashMapEntry, SpecdiffConfig, SpecNode, SwarmResult
+from specdiff.types import (
+    FilePlan,
+    HashMap,
+    HashMapEntry,
+    SpecdiffConfig,
+    SpecNode,
+    SwarmResult,
+)
 
 
 def _make_node(node_id: str = "test/example", spec_hash: str = "abc123") -> SpecNode:
@@ -83,8 +87,7 @@ class TestBackup:
     def test_backs_up_multiple_files(self, tmp_path, monkeypatch):
         monkeypatch.chdir(tmp_path)
         for name in ["a.py", "b.py"]:
-            f = tmp_path / name
-            f.write_text(f"# {name}")
+            (tmp_path / name).write_text(f"# {name}")
 
         specs_dir = tmp_path / ".specdiff"
         specs_dir.mkdir()
@@ -293,7 +296,11 @@ class TestExecuteSwarmCascade:
         node = _make_node()
         graph = build_graph([node])
         map_ = HashMap(
-            nodes={node.id: HashMapEntry(spec_hash="old", generated_files=["out.py"], generated_at="")}
+            nodes={
+                node.id: HashMapEntry(
+                    spec_hash="old", generated_files=["out.py"], generated_at=""
+                )
+            }
         )
         config = SpecdiffConfig(test_command="pytest")
 
@@ -327,9 +334,11 @@ class TestExecuteSwarmCascade:
         map_ = HashMap()
         config = SpecdiffConfig(test_command="pytest")
 
-        with patch("specdiff.runner.run_swarm", side_effect=_swarm_ok):
-            with patch("specdiff.runner.run_tests", return_value=(False, "5 failed")):
-                ok = execute_swarm_cascade([node], config, map_, graph, specs_dir)
+        with (
+            patch("specdiff.runner.run_swarm", side_effect=_swarm_ok),
+            patch("specdiff.runner.run_tests", return_value=(False, "5 failed")),
+        ):
+            ok = execute_swarm_cascade([node], config, map_, graph, specs_dir)
 
         assert ok is False
         assert node.id not in map_.nodes
@@ -343,9 +352,11 @@ class TestExecuteSwarmCascade:
         map_ = HashMap()
         config = SpecdiffConfig(test_command="pytest")
 
-        with patch("specdiff.runner.run_swarm", side_effect=_swarm_ok):
-            with patch("specdiff.runner.run_tests", return_value=(False, "failed")):
-                execute_swarm_cascade([node], config, map_, graph, specs_dir)
+        with (
+            patch("specdiff.runner.run_swarm", side_effect=_swarm_ok),
+            patch("specdiff.runner.run_tests", return_value=(False, "failed")),
+        ):
+            execute_swarm_cascade([node], config, map_, graph, specs_dir)
 
         generated = tmp_path / "src" / "test_example.py"
         assert not generated.exists()
@@ -359,9 +370,11 @@ class TestExecuteSwarmCascade:
         map_ = HashMap()
         config = SpecdiffConfig()
 
-        with patch("specdiff.runner.run_swarm", side_effect=_swarm_review_fail):
-            with patch("specdiff.runner.run_tests", return_value=(True, "")):
-                ok = execute_swarm_cascade([node], config, map_, graph, specs_dir, skip_review=True)
+        with (
+            patch("specdiff.runner.run_swarm", side_effect=_swarm_review_fail),
+            patch("specdiff.runner.run_tests", return_value=(True, "")),
+        ):
+            ok = execute_swarm_cascade([node], config, map_, graph, specs_dir, skip_review=True)
 
         assert ok is True
         assert node.id in map_.nodes
@@ -390,9 +403,11 @@ class TestExecuteSwarmCascade:
         map_ = HashMap()
         config = SpecdiffConfig()
 
-        with patch("specdiff.runner.run_swarm", side_effect=_swarm_ok):
-            with patch("specdiff.runner.run_tests", return_value=(True, "")):
-                ok = execute_swarm_cascade([node], config, map_, graph, specs_dir)
+        with (
+            patch("specdiff.runner.run_swarm", side_effect=_swarm_ok),
+            patch("specdiff.runner.run_tests", return_value=(True, "")),
+        ):
+            ok = execute_swarm_cascade([node], config, map_, graph, specs_dir)
 
         assert ok is True
         assert node.id in map_.nodes
@@ -416,9 +431,11 @@ class TestExecuteSwarmCascade:
         map_ = HashMap()
         config = SpecdiffConfig()
 
-        with patch("specdiff.runner.run_swarm", side_effect=_swarm_ok):
-            with patch("specdiff.runner.run_tests", return_value=(True, "")):
-                ok = execute_swarm_cascade([node_a, node_b], config, map_, graph, specs_dir)
+        with (
+            patch("specdiff.runner.run_swarm", side_effect=_swarm_ok),
+            patch("specdiff.runner.run_tests", return_value=(True, "")),
+        ):
+            ok = execute_swarm_cascade([node_a, node_b], config, map_, graph, specs_dir)
 
         assert ok is True
         assert "contracts/api" in map_.nodes
