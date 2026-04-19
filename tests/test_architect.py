@@ -83,6 +83,7 @@ class TestParseFilePlan:
 
     def test_multiple_files(self):
         import json
+
         data = {
             "src/auth.py": "authentication logic",
             "src/models.py": "data models",

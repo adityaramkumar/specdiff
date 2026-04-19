@@ -297,9 +297,7 @@ class TestExecuteSwarmCascade:
         graph = build_graph([node])
         map_ = HashMap(
             nodes={
-                node.id: HashMapEntry(
-                    spec_hash="old", generated_files=["out.py"], generated_at=""
-                )
+                node.id: HashMapEntry(spec_hash="old", generated_files=["out.py"], generated_at="")
             }
         )
         config = SpecdiffConfig(test_command="pytest")
