@@ -113,10 +113,10 @@ def build(node_id: str | None, no_review: bool) -> None:
     click.echo(f"Building {len(ordered_nodes)} node(s)...\n")
 
     ok = execute_swarm_cascade(ordered_nodes, config, map, graph, specs_dir, skip_review=no_review)
-    hashmap.save(specs_dir, map)
 
     if not ok:
         sys.exit(1)
+    hashmap.save(specs_dir, map)
     click.echo("\nBuild complete.")
 
 

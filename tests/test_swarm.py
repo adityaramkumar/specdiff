@@ -314,3 +314,163 @@ class TestRunSwarmCustom:
         assert result.review_passed is True
         assert "main.py" in result.generated_files
         mock_pipeline.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
+# _validate_string_map error paths
+# ---------------------------------------------------------------------------
+
+
+class TestValidateStringMap:
+    def test_non_string_value_raises(self):
+        from specdiff.agents.swarm import _validate_string_map
+
+        with pytest.raises(ValueError, match="string-to-string"):
+            _validate_string_map({"key": 123}, "TestAgent")
+
+    def test_non_string_value_nested_dict_raises(self):
+        from specdiff.agents.swarm import _validate_string_map
+
+        with pytest.raises(ValueError, match="string-to-string"):
+            _validate_string_map({"key": {"nested": "dict"}}, "TestAgent")
+
+    def test_valid_string_map_passes(self):
+        from specdiff.agents.swarm import _validate_string_map
+
+        result = _validate_string_map({"a": "1", "b": "2"}, "TestAgent")
+        assert result == {"a": "1", "b": "2"}
+
+    def test_empty_map_passes(self):
+        from specdiff.agents.swarm import _validate_string_map
+
+        assert _validate_string_map({}, "TestAgent") == {}
+
+
+# ---------------------------------------------------------------------------
+# _normalize_review_feedback error paths
+# ---------------------------------------------------------------------------
+
+
+class TestNormalizeReviewFeedback:
+    def test_string_passthrough(self):
+        from specdiff.agents.swarm import _normalize_review_feedback
+
+        assert _normalize_review_feedback("great work") == "great work"
+
+    def test_list_of_strings_joined(self):
+        from specdiff.agents.swarm import _normalize_review_feedback
+
+        assert _normalize_review_feedback(["item a", "item b"]) == "item a\nitem b"
+
+    def test_integer_raises(self):
+        from specdiff.agents.swarm import _normalize_review_feedback
+
+        with pytest.raises(ValueError, match="string 'feedback'"):
+            _normalize_review_feedback(42)
+
+    def test_dict_raises(self):
+        from specdiff.agents.swarm import _normalize_review_feedback
+
+        with pytest.raises(ValueError, match="string 'feedback'"):
+            _normalize_review_feedback({"score": 1})
+
+    def test_none_raises(self):
+        from specdiff.agents.swarm import _normalize_review_feedback
+
+        with pytest.raises(ValueError, match="string 'feedback'"):
+            _normalize_review_feedback(None)
+
+
+# ---------------------------------------------------------------------------
+# _extract_json_object error paths
+# ---------------------------------------------------------------------------
+
+
+class TestExtractJsonObject:
+    def test_non_dict_json_raises(self):
+        from specdiff.agents.swarm import _extract_json_object
+
+        with pytest.raises(ValueError, match="must return a JSON object"):
+            _extract_json_object("[1, 2, 3]", "TestAgent")
+
+    def test_invalid_json_raises(self):
+        from specdiff.agents.swarm import _extract_json_object
+
+        with pytest.raises(ValueError, match="invalid JSON"):
+            _extract_json_object("not json", "TestAgent")
+
+    def test_valid_dict_passes(self):
+        from specdiff.agents.swarm import _extract_json_object
+
+        result = _extract_json_object('{"key": "value"}', "TestAgent")
+        assert result == {"key": "value"}
+
+
+# ---------------------------------------------------------------------------
+# run_swarm: missing outputs and malformed review
+# ---------------------------------------------------------------------------
+
+
+class TestRunSwarmErrorPaths:
+    @patch("specdiff.agents.swarm._run_pipeline_adk")
+    def test_missing_generated_code_fails(self, mock_pipeline, tmp_path):
+        specs_dir = _setup_skills_dir(tmp_path)
+        mock_pipeline.return_value = {
+            "file_plan": "{}",
+            "generated_tests": "{}",
+            "review_result": json.dumps({"passed": True, "feedback": "ok"}),
+        }
+
+        with pytest.raises(ValueError, match="implementation"):
+            run_swarm(_make_node(), SpecdiffConfig(), specs_dir)
+
+    @patch("specdiff.agents.swarm._run_pipeline_adk")
+    def test_missing_generated_tests_fails(self, mock_pipeline, tmp_path):
+        specs_dir = _setup_skills_dir(tmp_path)
+        mock_pipeline.return_value = {
+            "file_plan": "{}",
+            "generated_code": "{}",
+            "review_result": json.dumps({"passed": True, "feedback": "ok"}),
+        }
+
+        with pytest.raises(ValueError, match="testing"):
+            run_swarm(_make_node(), SpecdiffConfig(), specs_dir)
+
+    @patch("specdiff.agents.swarm._run_pipeline_adk")
+    def test_review_passed_is_string_raises(self, mock_pipeline, tmp_path):
+        specs_dir = _setup_skills_dir(tmp_path)
+        mock_pipeline.return_value = {
+            "file_plan": "{}",
+            "generated_code": "{}",
+            "generated_tests": "{}",
+            "review_result": json.dumps({"passed": "yes", "feedback": "ok"}),
+        }
+
+        with pytest.raises(ValueError, match="boolean 'passed'"):
+            run_swarm(_make_node(), SpecdiffConfig(), specs_dir)
+
+    @patch("specdiff.agents.swarm._run_pipeline_adk")
+    def test_review_passed_is_none_raises(self, mock_pipeline, tmp_path):
+        specs_dir = _setup_skills_dir(tmp_path)
+        mock_pipeline.return_value = {
+            "file_plan": "{}",
+            "generated_code": "{}",
+            "generated_tests": "{}",
+            "review_result": json.dumps({"passed": None, "feedback": "ok"}),
+        }
+
+        with pytest.raises(ValueError, match="boolean 'passed'"):
+            run_swarm(_make_node(), SpecdiffConfig(), specs_dir)
+
+    @patch("specdiff.agents.swarm._run_pipeline_adk")
+    def test_generated_code_is_array_raises(self, mock_pipeline, tmp_path):
+        specs_dir = _setup_skills_dir(tmp_path)
+        mock_pipeline.return_value = {
+            "file_plan": "{}",
+            "generated_code": "[1, 2, 3]",
+            "generated_tests": "{}",
+            "review_result": json.dumps({"passed": True, "feedback": "ok"}),
+        }
+
+        with pytest.raises(ValueError, match="must return a JSON object"):
+            run_swarm(_make_node(), SpecdiffConfig(), specs_dir)

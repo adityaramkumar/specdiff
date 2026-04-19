@@ -52,7 +52,7 @@ class HashMap:
 
 @dataclass
 class SpecdiffConfig:
-    model: str = "gemini-3.1-flash-lite-preview"
+    model: str = "gemini-2.5-flash"
     test_command: str | None = None
     output_dir: str = "src"
     specs_dir: str = ".specdiff"
