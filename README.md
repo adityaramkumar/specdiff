@@ -178,6 +178,25 @@ Starting Specdiff Graph UI Server at http://localhost:8000
 
 The UI displays the dependency graph, visualizes stale/current status, and shows the cascade depth blast radius for any potential changes. It automatically polls for changes as you edit specs.
 
+### `specdiff validate`
+
+Check the spec graph for errors before running a build. Reports all issues at once — missing `depends_on` references, missing `parent` references, duplicate IDs, and circular dependencies. Exits with code 1 if any errors are found, making it usable as a CI gate.
+
+```
+$ specdiff validate
+Found 2 error(s):
+
+  behaviors/auth/login: depends_on 'contracts/api/nonexistent' not found
+  behaviors/auth/signup: parent 'auth' not found
+```
+
+On a clean graph:
+
+```
+$ specdiff validate
+Validated 5 spec(s). No issues found.
+```
+
 ### `specdiff extract [source]`
 
 Read existing code and generate spec files. This is useful for reverse-engineering an existing codebase into Specdiff specs.
