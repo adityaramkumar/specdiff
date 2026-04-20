@@ -127,5 +127,5 @@ def serve_ui(specs_dir: Path, port: int = 8000, open_browser: bool = True):
     try:
         httpd.serve_forever()
     except KeyboardInterrupt:
-        print("\\nStopping Specdiff UI Server.")
+        print("\nStopping Specdiff UI Server.")
         httpd.server_close()
