@@ -613,3 +613,108 @@ class TestExtract:
             result = runner.invoke(cli, ["extract", "--source", "totally_missing_dir"])
         assert result.exit_code == 1
         assert "does not exist" in result.output
+
+
+class TestValidate:
+    def test_no_specs(self, tmp_path):
+        proj = _setup_project(tmp_path, [])
+        runner = CliRunner()
+        with runner.isolated_filesystem(temp_dir=tmp_path):
+            os.chdir(proj)
+            result = runner.invoke(cli, ["validate"], catch_exceptions=False)
+        assert result.exit_code == 0
+        assert "No spec files found" in result.output
+
+    def test_valid_graph_passes(self, tmp_path):
+        proj = _setup_project(
+            tmp_path,
+            [
+                {"path": "contracts/api/users.spec.md", "id": "contracts/api/users"},
+                {
+                    "path": "behaviors/auth/login.spec.md",
+                    "id": "behaviors/auth/login",
+                    "depends_on": ["contracts/api/users"],
+                },
+            ],
+        )
+        runner = CliRunner()
+        with runner.isolated_filesystem(temp_dir=tmp_path):
+            os.chdir(proj)
+            result = runner.invoke(cli, ["validate"], catch_exceptions=False)
+        assert result.exit_code == 0
+        assert "No issues found" in result.output
+        assert "2 spec(s)" in result.output
+
+    def test_missing_depends_on_ref(self, tmp_path):
+        proj = _setup_project(
+            tmp_path,
+            [
+                {
+                    "path": "behaviors/auth/login.spec.md",
+                    "id": "behaviors/auth/login",
+                    "depends_on": ["contracts/api/nonexistent"],
+                }
+            ],
+        )
+        runner = CliRunner()
+        with runner.isolated_filesystem(temp_dir=tmp_path):
+            os.chdir(proj)
+            result = runner.invoke(cli, ["validate"])
+        assert result.exit_code == 1
+        assert "contracts/api/nonexistent" in result.output
+        assert "not found" in result.output
+
+    def test_missing_parent_ref(self, tmp_path):
+        proj = _setup_project(tmp_path, [])
+        spec_path = proj / ".specdiff" / "behaviors" / "auth" / "login.spec.md"
+        spec_path.parent.mkdir(parents=True, exist_ok=True)
+        spec_path.write_text(
+            "---\nid: behaviors/auth/login\nversion: '1.0.0'\nstatus: approved\n"
+            "parent: ghost/parent\n---\n\nSpec body.\n"
+        )
+        runner = CliRunner()
+        with runner.isolated_filesystem(temp_dir=tmp_path):
+            os.chdir(proj)
+            result = runner.invoke(cli, ["validate"])
+        assert result.exit_code == 1
+        assert "ghost/parent" in result.output
+        assert "not found" in result.output
+
+    def test_circular_dependency_detected(self, tmp_path):
+        proj = _setup_project(tmp_path, [])
+        specdiff = proj / ".specdiff"
+        a = specdiff / "behaviors" / "a.spec.md"
+        b = specdiff / "behaviors" / "b.spec.md"
+        a.parent.mkdir(parents=True, exist_ok=True)
+        a.write_text(
+            "---\nid: behaviors/a\nversion: '1.0.0'\nstatus: approved\n"
+            "depends_on:\n  - behaviors/b\n---\n\nSpec A.\n"
+        )
+        b.write_text(
+            "---\nid: behaviors/b\nversion: '1.0.0'\nstatus: approved\n"
+            "depends_on:\n  - behaviors/a\n---\n\nSpec B.\n"
+        )
+        runner = CliRunner()
+        with runner.isolated_filesystem(temp_dir=tmp_path):
+            os.chdir(proj)
+            result = runner.invoke(cli, ["validate"])
+        assert result.exit_code == 1
+        assert "Circular" in result.output
+
+    def test_multiple_errors_all_reported(self, tmp_path):
+        proj = _setup_project(tmp_path, [])
+        specdiff = proj / ".specdiff"
+        (specdiff / "behaviors").mkdir(parents=True, exist_ok=True)
+        for name, dep in [("a", "missing/x"), ("b", "missing/y")]:
+            (specdiff / "behaviors" / f"{name}.spec.md").write_text(
+                f"---\nid: behaviors/{name}\nversion: '1.0.0'\nstatus: approved\n"
+                f"depends_on:\n  - {dep}\n---\n\nSpec {name}.\n"
+            )
+        runner = CliRunner()
+        with runner.isolated_filesystem(temp_dir=tmp_path):
+            os.chdir(proj)
+            result = runner.invoke(cli, ["validate"])
+        assert result.exit_code == 1
+        assert "missing/x" in result.output
+        assert "missing/y" in result.output
+        assert "2 error(s)" in result.output

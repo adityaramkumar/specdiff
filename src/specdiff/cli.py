@@ -163,6 +163,59 @@ def status() -> None:
 
 
 @cli.command()
+def validate() -> None:
+    """Check the spec graph for errors before building.
+
+    Verifies that all depends_on and parent references resolve, that there
+    are no duplicate node IDs, and that no circular dependencies exist.
+    Exits with code 1 if any errors are found.
+    """
+    config = _load_config(Path(".specdiff"))
+    specs_dir = Path(config.specs_dir)
+
+    nodes = discover_specs(specs_dir)
+    if not nodes:
+        click.echo("No spec files found.")
+        return
+
+    node_map = {n.id: n for n in nodes}
+    errors: list[str] = []
+
+    seen_ids: dict[str, str] = {}
+    for node in nodes:
+        if node.id in seen_ids:
+            errors.append(
+                f"  Duplicate ID '{node.id}': {node.file_path} and {seen_ids[node.id]}"
+            )
+        else:
+            seen_ids[node.id] = node.file_path
+
+    for node in nodes:
+        for dep_id in node.depends_on:
+            if dep_id not in node_map:
+                errors.append(f"  {node.id}: depends_on '{dep_id}' not found")
+
+    for node in nodes:
+        if node.parent and node.parent not in node_map:
+            errors.append(f"  {node.id}: parent '{node.parent}' not found")
+
+    if not errors:
+        try:
+            graph = build_graph(nodes)
+            cascade(graph, list(node_map.keys()))
+        except ValueError as exc:
+            errors.append(f"  {exc}")
+
+    if errors:
+        click.echo(f"Found {len(errors)} error(s):\n")
+        for err in errors:
+            click.echo(err)
+        sys.exit(1)
+    else:
+        click.echo(f"Validated {len(nodes)} spec(s). No issues found.")
+
+
+@cli.command()
 @click.argument("node_id", required=False)
 def impact(node_id: str | None) -> None:
     """Show the blast radius of pending spec changes."""
