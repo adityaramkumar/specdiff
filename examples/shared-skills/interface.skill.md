@@ -28,5 +28,11 @@ export function createTodo(title: string): Todo;
 2. Use the language specified in the prompt.
 3. Define only the public API surface -- function/method signatures, class constructors, exported types. No implementation logic.
 4. Parameter names, types, and return types must be concrete and unambiguous.
-5. Error behavior: specify which exceptions/errors each function can raise (via docstring or JSDoc).
+5. Error behavior: specify which exceptions/errors each function can raise (via docstring
+   or JSDoc) AND pin the exact error string or code it raises (e.g.,
+   `Raises ValueError("duplicate column: {col_name}")` not just `Raises ValueError`).
+   The testing agent uses these exact strings to write assertions.
 6. Test files do not need interfaces -- skip them.
+7. For store or repository modules, define the complete CRUD surface: how items are
+   added, looked up (by which key), updated, and removed. Specify the return type
+   when an item is not found (None, raise KeyError, etc.).

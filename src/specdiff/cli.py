@@ -293,6 +293,15 @@ Return a JSON object:
 - feedback: what is clear, and what (if anything) is vague or missing.
 - proposed_revision: if passed is false, a revised markdown spec body that
   fixes all identified issues; otherwise null.
+
+A spec FAILS if any of the following are true:
+- An error response specifies an HTTP status code but not the response body field
+  names (e.g., "return 422" fails; "return 422 with {error: 'password_too_weak'}" passes)
+- Counting terms like "N rows" or "N items" are used without specifying whether the
+  count includes headers, empty entries, or deleted records
+- A validation rule combines conditions with "and" without listing every condition
+  explicitly (e.g., "strong password" fails; ">= 12 chars, >= 1 uppercase, >= 1 digit,
+  >= 1 special character" passes)
 """,
         "architect": """\
 You are the Architect agent. Analyse the spec and produce the file layout for
@@ -328,6 +337,11 @@ Rules:
 - Match the language and test framework stated in the prompt.
 - Be exact: the Implementation agent will be held to these signatures.
 - If dependency implementations are provided in the prompt, match their API exactly.
+- For every function that can fail, include the exact error string in the docstring/JSDoc,
+  not just the exception type. E.g.: 'Raises ValueError("duplicate column: {name}")'
+  The testing agent uses these exact strings to write assertions.
+- For store or repository modules, define the full CRUD surface: add, find-by-key,
+  update, remove, and what happens on not-found (return None or raise KeyError, etc.).
 """,
         "implementation": """\
 You are the Implementation agent. Given the spec, file plan, and interface

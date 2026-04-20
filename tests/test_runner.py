@@ -574,6 +574,93 @@ class TestRetryLoop:
         assert call_count["n"] == 1
 
 
+class TestStaleFileCleanup:
+    def test_old_files_not_in_new_plan_are_deleted(self, tmp_path, monkeypatch):
+        """When architect produces a different file plan, old generated files are removed."""
+        monkeypatch.chdir(tmp_path)
+        specs_dir = tmp_path / ".specdiff"
+        specs_dir.mkdir()
+        node = _make_node()
+        graph = build_graph([node])
+
+        # Runner stores relative paths in the hash map (relative to CWD)
+        old_file = tmp_path / "src" / "old_handler.py"
+        old_file.parent.mkdir(parents=True)
+        old_file.write_text("# old generation")
+
+        map_ = HashMap(
+            nodes={
+                node.id: HashMapEntry(
+                    spec_hash="previous_hash",
+                    generated_files=["src/old_handler.py"],
+                    generated_at="",
+                )
+            }
+        )
+        config = SpecdiffConfig()
+
+        with (
+            patch("specdiff.runner.run_swarm", side_effect=_swarm_ok),
+            patch("specdiff.runner.run_tests", return_value=(True, "")),
+        ):
+            ok = execute_swarm_cascade([node], config, map_, graph, specs_dir)
+
+        assert ok is True
+        assert not old_file.exists()
+
+    def test_files_still_in_new_plan_are_kept(self, tmp_path, monkeypatch):
+        """Files that remain in the new plan are not deleted."""
+        monkeypatch.chdir(tmp_path)
+        specs_dir = tmp_path / ".specdiff"
+        specs_dir.mkdir()
+        node = _make_node()
+        graph = build_graph([node])
+        map_ = HashMap()
+        config = SpecdiffConfig()
+
+        with (
+            patch("specdiff.runner.run_swarm", side_effect=_swarm_ok),
+            patch("specdiff.runner.run_tests", return_value=(True, "")),
+        ):
+            ok = execute_swarm_cascade([node], config, map_, graph, specs_dir)
+
+        assert ok is True
+        generated = list((tmp_path / "src").rglob("*.py"))
+        assert len(generated) == 1
+
+    def test_stale_cleanup_not_triggered_on_test_failure(self, tmp_path, monkeypatch):
+        """Old files are restored (not deleted) when post-generation tests fail."""
+        monkeypatch.chdir(tmp_path)
+        specs_dir = tmp_path / ".specdiff"
+        specs_dir.mkdir()
+        node = _make_node()
+        graph = build_graph([node])
+
+        old_file = tmp_path / "src" / "old_handler.py"
+        old_file.parent.mkdir(parents=True)
+        old_file.write_text("# old generation")
+
+        map_ = HashMap(
+            nodes={
+                node.id: HashMapEntry(
+                    spec_hash="previous_hash",
+                    generated_files=["src/old_handler.py"],
+                    generated_at="",
+                )
+            }
+        )
+        config = SpecdiffConfig(test_command="pytest")
+
+        with (
+            patch("specdiff.runner.run_swarm", side_effect=_swarm_ok),
+            patch("specdiff.runner.run_tests", return_value=(False, "tests failed")),
+        ):
+            ok = execute_swarm_cascade([node], config, map_, graph, specs_dir)
+
+        assert ok is False
+        assert old_file.exists()
+
+
 class TestDepGeneratedContext:
     def test_dep_generated_files_passed_to_swarm(self, tmp_path, monkeypatch):
         monkeypatch.chdir(tmp_path)

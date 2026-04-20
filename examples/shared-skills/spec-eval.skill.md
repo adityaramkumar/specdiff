@@ -25,6 +25,13 @@ behavior, the spec is not ready.
 - Error handling is described vaguely ("return an error")
 - Response shapes or field names are unspecified
 - Performance expectations use relative language ("quickly", "soon")
+- An error response specifies an HTTP status code but not the response body field names
+  (e.g., "return 422" fails; "return 422 with `{ \"error\": \"password_too_weak\" }`" passes)
+- Counting terms like "N rows", "N items", "N records" are used without specifying
+  whether the count includes headers, empty entries, soft-deleted records, etc.
+- A validation rule uses "and" to combine conditions without listing every condition
+  explicitly (e.g., "strong password" fails; "≥12 chars, ≥1 uppercase, ≥1 digit,
+  ≥1 special character" passes)
 
 ## On failure:
 - Rewrite each failing criterion with specific, concrete language
