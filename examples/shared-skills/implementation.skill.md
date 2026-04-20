@@ -22,3 +22,17 @@ contents as a string. No explanation, no markdown fences.
 8. Every file you return must contain complete working logic for the responsibility assigned to it.
 9. Support/helper files are allowed only when they directly implement behavior required by the spec; they must not add extra observable behavior.
 10. When the spec requires CSV or NDJSON streaming edge cases, implement them completely rather than approximating with naive `split('\n')` logic.
+11. Never hardcode test or example data as production logic. An "in-memory store of
+    users" means a mutable collection (list, dict, or Map) initialised at module level
+    -- never a literal constant like `['test@example.com']` or a check like
+    `if email === 'admin@example.com'`. The spec's data model must be represented as
+    a real runtime data structure.
+12. For TypeScript: every import must reference a real, installable npm package. Never
+    use placeholder names like `'some-http-framework'` or `'your-jwt-library'`. Use
+    the actual package: `express` for Request/Response, `jsonwebtoken` for JWT,
+    `bcrypt` for password hashing, `uuid` for UUID generation.
+13. Every import you use must appear at the top of the file. Review each file before
+    returning it -- a missing import is a runtime error that cannot be patched.
+14. If the spec states a multi-condition validation rule (e.g., password >= 12 chars
+    AND contains 1 uppercase AND 1 digit AND 1 special character), implement every
+    condition. Never simplify to a single check.

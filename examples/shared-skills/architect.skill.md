@@ -17,3 +17,8 @@ is a short description of that file's purpose. No code, no explanation -- just t
 5. If the spec depends on contracts, ensure interfaces match the contract shapes exactly.
 6. Prefer the smallest file plan that can fully satisfy the spec.
 7. Do not invent placeholder, orchestration, or wrapper files unless the spec requires observable behavior for them.
+8. If the spec describes state that persists across requests (a user store, a session
+   store, a todo list, an event queue), include a dedicated module for it in the file
+   plan (e.g., "auth/user-store.ts" or "store/users.py"). Request handlers must
+   delegate to this module -- never let mutable state live as a literal constant
+   inside a handler function.

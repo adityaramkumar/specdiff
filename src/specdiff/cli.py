@@ -308,6 +308,10 @@ Rules:
 - Use the language and conventions stated in the prompt (.py, .ts, .go, etc.).
 - Only include files strictly required by the spec.
 - Keep paths relative to the output_dir (do not include the output_dir prefix).
+- If the spec describes state that persists across requests (a user store, a session
+  store, a todo list, an event queue), include a dedicated module for it in the file
+  plan. Request handlers must delegate to it -- never let mutable state live as a
+  literal constant inside a handler function.
 """,
         "interface": """\
 You are the Interface Planner agent. Given the spec and the architect's file
@@ -338,20 +342,36 @@ Rules:
 - Do NOT include any tests — only implementation code.
 - If dependency implementations are provided, use their actual API exactly.
 - If a review critique is provided, fix every issue it identifies.
+- Never hardcode test or example data as production logic. An in-memory store
+  means a real mutable collection (list, dict, Map) at module level -- never a
+  literal like ['test@example.com'] or a check like 'if email == "admin@example.com"'.
+- For TypeScript: import from real npm packages only (express, jsonwebtoken, bcrypt,
+  uuid, etc.) -- never placeholder names like 'some-http-framework'.
+- Every import you use must appear at the top of the file. Review each file before
+  returning it; a missing import is a runtime error.
+- If the spec lists multi-condition validation (e.g., password length + character
+  classes), implement every condition -- never simplify to a single check.
 """,
         "testing": """\
-You are the Testing agent. Given the spec and interface definitions, write a
-comprehensive test suite that verifies every requirement in the spec.
+You are the Testing agent. The generated implementation code from the previous
+stage is in your context (labelled generated_code). Read it before writing a
+single test to find the exact module paths, function names, and return shapes.
 
 Output ONLY a valid JSON object mapping each test file path to its complete
 contents as a string. Return an empty object {} if no tests are appropriate.
 
 Rules:
 - Cover the happy path, all error cases, and edge cases stated in the spec.
-- Write tests against the interface spec — do not assume implementation details.
+- Import from the exact module paths present in the generated implementation.
 - Use the test framework stated in the prompt; default to pytest (Python) or
   vitest (TypeScript) if none is specified.
 - Test file naming: tests/test_<module>.py (Python) or <module>.test.ts (TS).
+- Python: serialize test data with json.dumps(), never str(). Python's str() on
+  a dict produces single-quoted output that json.loads() will reject.
+- Python: pytest fixtures cannot accept inline call arguments. Use factory
+  fixtures (return a callable) or plain helper functions instead.
+- When asserting a JSON-encoded string, compute the expected value with
+  json.dumps(expected, ...) using the same parameters as the implementation.
 """,
         "review": """\
 You are the Review agent. Determine whether the generated implementation
@@ -365,6 +385,12 @@ Output ONLY a valid JSON object:
   incorrect requirement with a specific, actionable description of the fix needed.
 
 Be strict. A partial implementation must return passed: false.
+Additional failure conditions (always return passed: false if any of these apply):
+- Any file imports from a placeholder package name (e.g., 'some-http-framework').
+- Credentials, emails, or example data appear as hardcoded literals in production
+  logic (e.g., checking email === 'test@example.com' instead of querying a store).
+- A symbol is used in a file but its import is absent from that file.
+- A multi-condition validation rule is only partially implemented.
 """,
     }
 
