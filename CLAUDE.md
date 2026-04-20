@@ -29,11 +29,11 @@ Specdiff is a spec-driven code generation framework: `.spec.md` files are the so
 
 ### Core Data Flow
 
-1. **Parse** — `parser.py` reads `.spec.md` files (YAML frontmatter + body), computes SHA-256 hashes
-2. **Graph** — `graph.py` builds a directed graph from `parent` and `depends_on` fields; topological sort determines build order; cascade walk finds downstream impact
-3. **Hash check** — `hashmap.py` compares current spec hashes against `.specdiff/hash-map.json` to determine which nodes are stale
-4. **Run** — `runner.py` orchestrates: backup existing files → run baseline tests → invoke swarm → run tests again → rollback on failure
-5. **Swarm** — `agents/swarm.py` runs a multi-agent pipeline that produces code
+1. **Parse** — `parser.py` reads `.spec.md` files (YAML frontmatter + body), computes SHA-256 hashes. The hash payload excludes the `status` and `hash` frontmatter fields so editorial-only changes don't trigger rebuilds.
+2. **Graph** — `graph.py` builds a directed graph from `parent` (hierarchy) and `depends_on` (cross-branch) fields; topological sort determines build order; cascade walk finds downstream impact.
+3. **Hash check** — `hashmap.py` compares current spec hashes against `.specdiff/hash-map.json` to determine which nodes are stale. Writes are atomic (`.tmp` then `os.replace`).
+4. **Run** — `runner.py` orchestrates: backup existing files to `.specdiff/.backup/` → run baseline tests → invoke swarm → run tests again → rollback on failure.
+5. **Swarm** — `agents/swarm.py` runs a multi-agent pipeline that produces code.
 
 ### Multi-Agent Pipeline (`agents/swarm.py`)
 
@@ -43,31 +43,48 @@ Sequential stages with a parallel middle:
 3. **Implementation** + **Testing** (parallel) — generate code and test suite
 4. **Review** — validates output satisfies spec; on rejection, critique is fed back for up to `max_retries` (default 2) retries
 
-Two LLM backends are supported:
-- **Gemini** (`gemini-*` models): uses Google ADK (`SequentialAgent`, `ParallelAgent`, `InMemoryRunner`)
-- **xAI/OpenAI-compatible** (`grok-*`, etc.): custom `ThreadPoolExecutor`-based pipeline in `llm.py`
+Two LLM backends are supported, chosen by `llm.py:detect_provider()` based on model name prefix:
+- **Gemini** (`gemini-*`): uses Google ADK (`SequentialAgent`, `ParallelAgent`, `InMemoryRunner`) — the pipeline is built as an ADK agent graph in `build_swarm()`.
+- **xAI/OpenAI-compatible** (`grok-*`, etc.): custom `ThreadPoolExecutor`-based sequential pipeline built in `build_pipeline()`, calling `generate_content()` directly. Context accumulates across stages.
+
+When building prompts (`_build_prompt()`), `depends_on` nodes contribute both their spec prose **and their already-generated code** as context, not just the spec text.
 
 ### Skill Files
 
-Agent behavior is controlled by Markdown files in `.specdiff/skills/` (e.g., `architect.skill.md`). These are loaded by `skills.py` and injected as system prompts. Editing these files changes agent behavior without touching code.
+Agent behavior is controlled by Markdown files in `.specdiff/skills/` (e.g., `architect.skill.md`). These are loaded by `skills.py` and injected as system prompts. `specdiff init` scaffolds six default skills: `spec-eval`, `architect`, `interface`, `implementation`, `testing`, `review`. Editing these files changes agent behavior without touching code.
 
 ### Traceability & Safety
 
-- Every generated file receives a header with its source spec ID, hash, and timestamp
-- Files are backed up before regeneration and restored on test failure
-- Agents receive the generated code of `depends_on` nodes as context (not just the spec prose)
+- Every generated file receives a language-appropriate comment header with its source spec ID, hash, and timestamp (`runner.py:_traceability_header()`).
+- Files are backed up before regeneration (`.specdiff/.backup/`) and restored on test failure.
+- The `review` CLI command writes proposed spec revisions to `.specdiff/proposed/` without modifying originals.
 
 ### Configuration (`.specdiff/config.yaml`)
 
 Key fields: `model`, `output_dir`, `specs_dir`, `language`, `test_command`, `test_framework`, `review_before_build`, `max_retries`.
 
+Default model is `gemini-2.5-flash`.
+
 ### Key Types (`types.py`)
 
-- `SpecNode` — id, version, status, hash, content, file_path, parent, depends_on
+- `SpecNode` — id, version, status, hash, content, file_path, parent, depends_on, language
 - `SpecdiffConfig` — all config fields above
 - `SwarmResult` — file_plan, generated_files, generated_tests, review status
 - `HashMap` — node_id → `HashMapEntry` (spec_hash, generated_files, generated_at)
 
 ### CLI Commands (`cli.py`)
 
-`build`, `status`, `impact`, `review`, `ui`, `extract`, `init` — all implemented as Click commands. `ui` launches the React+Vite graph visualization at `localhost:8000` via `api.py`.
+- `build [node_id]` — generate code from specs; `--no-review` skips review stage
+- `status` — show staleness per node (new/stale/current)
+- `impact [node_id]` — preview cascade blast radius without API calls
+- `review [node_id]` — run Spec Agent and write proposed revisions to `.specdiff/proposed/`
+- `ui [--port] [--no-browser]` — launch React+Vite graph visualization via `api.py`
+- `init` — scaffold `.specdiff/` with `config.yaml`, default skill files, and an example spec
+- `extract [--source .] [--granularity auto|file]` — reverse-engineer existing code into `.spec.md` files
+
+### Code Conventions
+
+- Files should stay under ~150 lines; split by responsibility if growing larger.
+- No narrative comments — only add a comment when the *why* is non-obvious.
+- Python 3.10+ throughout; Ruff enforces style.
+- Tests use `pytest`, `unittest.mock`, and Click's `CliRunner`. Mock at the boundary of external calls (LLM clients, file I/O) rather than deep internals.
