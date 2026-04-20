@@ -454,6 +454,51 @@ Replace this with your first real spec.
 
 
 @cli.command()
+@click.argument("node_id", required=False)
+@click.option("--yes", is_flag=True, help="Skip confirmation prompt")
+def clean(node_id: str | None, yes: bool) -> None:
+    """Delete generated files and remove them from the hash map.
+
+    Forces a full rebuild of NODE_ID (or all nodes) on the next build.
+    """
+    config = _load_config(Path(".specdiff"))
+    specs_dir = Path(config.specs_dir)
+    hm = hashmap.load(specs_dir)
+
+    if not hm.nodes:
+        click.echo("Nothing to clean.")
+        return
+
+    if node_id:
+        if node_id not in hm.nodes:
+            raise click.ClickException(f"Node '{node_id}' has no tracked generated files.")
+        targets = {node_id: hm.nodes[node_id]}
+    else:
+        targets = dict(hm.nodes)
+
+    total_files = sum(len(e.generated_files) for e in targets.values())
+    prompt = (
+        f"Remove {len(targets)} node(s) and {total_files} generated file(s) from the hash map?"
+    )
+    if not yes and not click.confirm(prompt):
+        click.echo("Aborted.")
+        return
+
+    for nid, entry in targets.items():
+        removed = 0
+        for path_str in entry.generated_files:
+            p = Path(path_str)
+            if p.exists():
+                p.unlink()
+                removed += 1
+        del hm.nodes[nid]
+        click.echo(f"  [{nid}] cleaned ({removed} file(s) removed)")
+
+    hashmap.save(specs_dir, hm)
+    click.echo("\nClean complete.")
+
+
+@cli.command()
 @click.option("--source", default=".", help="Directory to read code from")
 @click.option("--granularity", default="auto", help="Extraction granularity ('auto' or 'file')")
 def extract(source: str, granularity: str) -> None:
