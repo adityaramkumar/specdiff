@@ -82,7 +82,7 @@ Four generated example snapshots in [`examples/`](examples/), each with specs an
 
 These examples are primarily for inspecting generated structure and spec relationships. They are not currently packaged as fully runnable standalone apps.
 
-Skill files are shared across examples via symlinks from each example's `.specdiff/skills/` to `examples/shared-skills/`.
+Skill files in each example's `.specdiff/skills/` are copies of the files in `examples/shared-skills/`. Update `shared-skills/` when improving skill content, then copy the changes into each example.
 
 ## How to Retrofit an Existing Codebase
 
@@ -125,6 +125,17 @@ Build complete.
 If the review agent rejects an implementation, the swarm retries automatically (up to `max_retries` times) with the critique fed back as context. If tests fail after generation, all files are rolled back.
 
 Use `--no-review` to skip the review gate and always write the generated output. Use `specdiff build <node_id>` to target a single node.
+
+Use `--dry-run` to preview the full build plan (nodes, order, reason) without invoking any LLM:
+
+```
+$ specdiff build --dry-run
+Would build 3 node(s) in this order:
+
+  1. contracts/api/users  [stale]
+  2. behaviors/auth/login  [stale, depends on contracts/api/users]
+  3. behaviors/auth/signup  [cascade, depends on contracts/api/users]
+```
 
 ### `specdiff status`
 
@@ -177,6 +188,22 @@ Starting Specdiff Graph UI Server at http://localhost:8000
 ```
 
 The UI displays the dependency graph, visualizes stale/current status, and shows the cascade depth blast radius for any potential changes. It automatically polls for changes as you edit specs.
+
+### `specdiff clean [node_id]`
+
+Delete generated files tracked in the hash map and remove their entries, so they will be fully rebuilt on the next `specdiff build`. Useful after changing agents, skill files, or models.
+
+```
+$ specdiff clean
+Remove 3 node(s) and 6 generated file(s) from the hash map? [y/N]: y
+  [contracts/api/users] cleaned (2 file(s) removed)
+  [behaviors/auth/login] cleaned (2 file(s) removed)
+  [behaviors/auth/signup] cleaned (2 file(s) removed)
+
+Clean complete.
+```
+
+Use `specdiff clean <node_id>` to clean a single node. Use `--yes` to skip the confirmation prompt.
 
 ### `specdiff validate`
 

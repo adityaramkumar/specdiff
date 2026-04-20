@@ -77,7 +77,7 @@ Both backends share the same `_build_prompt` function and `run_swarm` entry poin
 
 1. **Bug fixes** -- open an issue first, then submit a PR with a test that reproduces the bug.
 2. **New features** -- discuss in an issue before writing code. The phased build plan in [DESIGN.md](DESIGN.md) describes what's planned.
-3. **Examples** -- new example projects in `examples/` are welcome. Each should be self-contained with its own `.specdiff/` directory and a symlink to `shared-skills/`.
+3. **Examples** -- new example projects in `examples/` are welcome. Each should be self-contained with its own `.specdiff/` directory. Copy the skill files from `examples/shared-skills/` into the example's `.specdiff/skills/`.
 4. **Skill files** -- improvements to the example skill files in `examples/shared-skills/` that produce better generation output.
 
 ## Code Style

@@ -66,7 +66,12 @@ def cli() -> None:
 @cli.command()
 @click.argument("node_id", required=False)
 @click.option("--no-review", is_flag=True, help="Skip the review gate")
-def build(node_id: str | None, no_review: bool) -> None:
+@click.option(
+    "--dry-run",
+    is_flag=True,
+    help="Show what would be built without invoking any LLM",
+)
+def build(node_id: str | None, no_review: bool, dry_run: bool) -> None:
     """Generate code from specs. Optionally target a single NODE_ID."""
     config = _load_config(Path(".specdiff"))
     specs_dir = Path(config.specs_dir)
@@ -100,6 +105,16 @@ def build(node_id: str | None, no_review: bool) -> None:
 
     ordered_ids = cascade(graph, [n.id for n in stale], stale_ids=stale_ids)
     ordered_nodes = [graph.nodes[nid] for nid in ordered_ids]
+
+    if dry_run:
+        click.echo(f"Would build {len(ordered_nodes)} node(s) in this order:\n")
+        for i, node in enumerate(ordered_nodes, 1):
+            reason = "stale" if node.id in stale_ids else "cascade"
+            deps_str = ""
+            if node.depends_on:
+                deps_str = f", depends on {', '.join(node.depends_on)}"
+            click.echo(f"  {i}. {node.id}  [{reason}{deps_str}]")
+        return
 
     for node in ordered_nodes:
         for dep_id in node.depends_on:
@@ -502,6 +517,49 @@ Replace this with your first real spec.
     click.echo("  3. Run `specdiff review behaviors/hello` to validate it")
     click.echo("  4. Run `specdiff build` to generate code")
     click.echo("  5. Run `specdiff ui` to explore your spec graph")
+
+
+@cli.command()
+@click.argument("node_id", required=False)
+@click.option("--yes", is_flag=True, help="Skip confirmation prompt")
+def clean(node_id: str | None, yes: bool) -> None:
+    """Delete generated files and remove them from the hash map.
+
+    Forces a full rebuild of NODE_ID (or all nodes) on the next build.
+    """
+    config = _load_config(Path(".specdiff"))
+    specs_dir = Path(config.specs_dir)
+    hm = hashmap.load(specs_dir)
+
+    if not hm.nodes:
+        click.echo("Nothing to clean.")
+        return
+
+    if node_id:
+        if node_id not in hm.nodes:
+            raise click.ClickException(f"Node '{node_id}' has no tracked generated files.")
+        targets = {node_id: hm.nodes[node_id]}
+    else:
+        targets = dict(hm.nodes)
+
+    total_files = sum(len(e.generated_files) for e in targets.values())
+    prompt = f"Remove {len(targets)} node(s) and {total_files} generated file(s) from the hash map?"
+    if not yes and not click.confirm(prompt):
+        click.echo("Aborted.")
+        return
+
+    for nid, entry in targets.items():
+        removed = 0
+        for path_str in entry.generated_files:
+            p = Path(path_str)
+            if p.exists():
+                p.unlink()
+                removed += 1
+        del hm.nodes[nid]
+        click.echo(f"  [{nid}] cleaned ({removed} file(s) removed)")
+
+    hashmap.save(specs_dir, hm)
+    click.echo("\nClean complete.")
 
 
 @cli.command()
