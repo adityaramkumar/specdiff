@@ -30,6 +30,7 @@ your-project/
     config.yaml
     skills/
       architect.skill.md
+      interface.skill.md
       implementation.skill.md
       testing.skill.md
       review.skill.md
@@ -42,12 +43,15 @@ your-project/
         signup.spec.md
 ```
 
+Run `specdiff init` to scaffold the directory with a `config.yaml` and all required skill files automatically.
+
 Minimal `config.yaml`:
 
 ```yaml
-model: gemini-3.1-flash-lite-preview
+model: gemini-2.5-flash
 output_dir: src
 specs_dir: .specdiff
+language: python
 ```
 
 Each spec file is Markdown with YAML frontmatter:
@@ -108,17 +112,19 @@ Generate code from specs. Only stale nodes are rebuilt. If a spec depends on a c
 $ specdiff build
 Building 3 node(s)...
 
-  [contracts/api/users] generating...
+  [contracts/api/users] running swarm...
   [contracts/api/users] done.
-  [behaviors/auth/login] generating...
+  [behaviors/auth/login] running swarm...
   [behaviors/auth/login] done.
-  [behaviors/auth/signup] generating...
+  [behaviors/auth/signup] running swarm...
   [behaviors/auth/signup] done.
 
 Build complete.
 ```
 
-If the Testing Agent generates tests, `test_command` must be configured so Specdiff can run a baseline before regeneration and verify the regenerated output afterward. If tests fail, all files are rolled back.
+If the review agent rejects an implementation, the swarm retries automatically (up to `max_retries` times) with the critique fed back as context. If tests fail after generation, all files are rolled back.
+
+Use `--no-review` to skip the review gate and always write the generated output. Use `specdiff build <node_id>` to target a single node.
 
 ### `specdiff status`
 
@@ -190,21 +196,27 @@ Extraction complete! Initialized 2 specs in .specdiff.
 
 | Field | Default | Description |
 |---|---|---|
-| `model` | `gemini-3.1-flash-lite-preview` | Gemini model for generation and review |
+| `model` | `gemini-2.5-flash` | LLM model for generation and review. Gemini models use the ADK pipeline; xAI (`grok-*`) models use the OpenAI-compatible path. |
 | `output_dir` | `src` | Where generated files are written |
 | `specs_dir` | `.specdiff` | Where spec files live |
+| `language` | `python` | Target programming language for code generation |
+| `test_framework` | (none) | Test framework hint passed to agents (e.g. `pytest`, `vitest`) |
 | `test_command` | (none) | Shell command to run before and after generation. Required when generated tests are present. |
 | `review_before_build` | `false` | Require spec review to pass before build |
+| `max_retries` | `2` | How many times to retry a failing swarm before giving up. On each retry the review critique is fed back into the prompt. |
 
 ## How It Works
 
 1. Each spec has a SHA-256 hash of its body content plus graph-shaping frontmatter like dependencies and version
 2. A hash map (`.specdiff/hash-map.json`) tracks which hash produced which files
 3. On build, only specs with changed hashes are regenerated
-4. Specs declare dependencies via `depends_on` -- changing a contract cascades to all dependents
-5. Every generated file gets a traceability header linking it back to its spec
-6. If generated tests exist, Specdiff requires a configured `test_command` and runs it before and after generation
-7. If tests fail after generation, all files are rolled back to their previous state
+4. Specs declare dependencies via `depends_on` — changing a contract cascades to all dependents
+5. When building a node, the actual generated code of its dependencies is included in the prompt so the implementation agent sees real API shapes
+6. The multi-agent swarm runs: Architect → Interface Planner → (Implementation ‖ Testing) → Review
+7. If the Review agent rejects the output, the swarm retries up to `max_retries` times with the critique fed back as context
+8. Every generated file gets a traceability header linking it back to its spec
+9. If generated tests exist, Specdiff requires a configured `test_command` and runs it before and after generation
+10. If tests fail after generation, all files are rolled back to their previous state
 
 For the broader design vision and planned extensions beyond the current implementation, see [DESIGN.md](DESIGN.md).
 

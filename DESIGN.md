@@ -2,7 +2,7 @@
 
 > Specdiff turns software development into a compilation problem.
 >
-> Note: this document describes the target architecture. The current implementation already covers spec parsing, dependency graphs, incremental rebuild tracking, `build`/`status`/`impact`/`review` commands, a basic architect -> implementation/testing -> review swarm, and rollback on failing tests. Independent test specs, reconciler/migration agents, reverse-patch debugging, version-history edges, and user-defined agents are still future work.
+> Note: this document describes the target architecture. The current implementation covers spec parsing, dependency graphs, incremental rebuild tracking, `build`/`status`/`impact`/`review`/`extract` commands, a four-stage swarm (Architect → Interface Planner → Implementation ‖ Testing → Review), automatic retry with critique feedback, dependency code context in generation prompts, rollback on failing tests, and user-customisable skill files. Independent test specs, reconciler/migration agents, reverse-patch debugging, version-history edges, and user-defined agents are still future work.
 
 ```
 spec → compile → system
