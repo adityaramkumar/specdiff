@@ -126,6 +126,17 @@ If the review agent rejects an implementation, the swarm retries automatically (
 
 Use `--no-review` to skip the review gate and always write the generated output. Use `specdiff build <node_id>` to target a single node.
 
+Use `--dry-run` to preview the full build plan (nodes, order, reason) without invoking any LLM:
+
+```
+$ specdiff build --dry-run
+Would build 3 node(s) in this order:
+
+  1. contracts/api/users  [stale]
+  2. behaviors/auth/login  [stale, depends on contracts/api/users]
+  3. behaviors/auth/signup  [cascade, depends on contracts/api/users]
+```
+
 ### `specdiff status`
 
 Show which specs are current, stale, or new.

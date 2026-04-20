@@ -323,6 +323,93 @@ class TestBuild:
             assert "auth/login" not in data
 
 
+class TestBuildDryRun:
+    def test_dry_run_shows_plan_without_building(self, tmp_path):
+        proj = _setup_project(
+            tmp_path,
+            [
+                {"path": "contracts/api/users.spec.md", "id": "contracts/api/users"},
+                {
+                    "path": "behaviors/auth/login.spec.md",
+                    "id": "behaviors/auth/login",
+                    "depends_on": ["contracts/api/users"],
+                },
+            ],
+        )
+        runner = CliRunner()
+        with runner.isolated_filesystem(temp_dir=tmp_path):
+            os.chdir(proj)
+            result = runner.invoke(cli, ["build", "--dry-run"], catch_exceptions=False)
+
+        assert result.exit_code == 0, result.output
+        assert "Would build 2 node(s)" in result.output
+        assert "contracts/api/users" in result.output
+        assert "behaviors/auth/login" in result.output
+        assert "stale" in result.output
+        hm_path = proj / ".specdiff" / "hash-map.json"
+        assert not hm_path.exists()
+
+    def test_dry_run_shows_cascade_reason(self, tmp_path):
+        proj = _setup_project(
+            tmp_path,
+            [
+                {"path": "contracts/api/users.spec.md", "id": "contracts/api/users"},
+                {
+                    "path": "behaviors/auth/login.spec.md",
+                    "id": "behaviors/auth/login",
+                    "depends_on": ["contracts/api/users"],
+                },
+            ],
+        )
+        from specdiff.parser import parse_spec_file
+
+        node = parse_spec_file(proj / ".specdiff" / "behaviors" / "auth" / "login.spec.md")
+        hm_data = {node.id: {"spec_hash": node.hash, "generated_files": [], "generated_at": ""}}
+        (proj / ".specdiff" / "hash-map.json").write_text(json.dumps(hm_data))
+
+        runner = CliRunner()
+        with runner.isolated_filesystem(temp_dir=tmp_path):
+            os.chdir(proj)
+            result = runner.invoke(cli, ["build", "--dry-run"], catch_exceptions=False)
+
+        assert result.exit_code == 0, result.output
+        assert "contracts/api/users" in result.output
+        assert "behaviors/auth/login" in result.output
+        assert "cascade" in result.output
+
+    def test_dry_run_up_to_date_exits_cleanly(self, tmp_path):
+        proj = _setup_project(
+            tmp_path,
+            [{"path": "behaviors/auth/login.spec.md", "id": "auth/login"}],
+        )
+        from specdiff.parser import parse_spec_file
+
+        node = parse_spec_file(proj / ".specdiff" / "behaviors" / "auth" / "login.spec.md")
+        hm_data = {node.id: {"spec_hash": node.hash, "generated_files": [], "generated_at": ""}}
+        (proj / ".specdiff" / "hash-map.json").write_text(json.dumps(hm_data))
+
+        runner = CliRunner()
+        with runner.isolated_filesystem(temp_dir=tmp_path):
+            os.chdir(proj)
+            result = runner.invoke(cli, ["build", "--dry-run"], catch_exceptions=False)
+        assert result.exit_code == 0
+        assert "up to date" in result.output
+
+    def test_dry_run_does_not_call_swarm(self, tmp_path):
+        proj = _setup_project(
+            tmp_path,
+            [{"path": "behaviors/auth/login.spec.md", "id": "auth/login"}],
+        )
+        runner = CliRunner()
+        with (
+            patch("specdiff.runner.run_swarm") as mock_swarm,
+            runner.isolated_filesystem(temp_dir=tmp_path),
+        ):
+            os.chdir(proj)
+            runner.invoke(cli, ["build", "--dry-run"], catch_exceptions=False)
+        mock_swarm.assert_not_called()
+
+
 class TestImpact:
     def test_no_specs(self, tmp_path):
         proj = _setup_project(tmp_path, [])
