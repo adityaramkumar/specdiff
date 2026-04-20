@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import warnings
 from pathlib import Path
 
 import frontmatter
@@ -30,6 +31,12 @@ def parse_spec_file(file_path: Path) -> SpecNode:
     )
     content_hash = hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
+    raw_depends = meta.get("depends_on") or []
+    if not isinstance(raw_depends, list) or not all(isinstance(x, str) for x in raw_depends):
+        raise ValueError(
+            f"{file_path}: 'depends_on' must be a list of strings, got {raw_depends!r}"
+        )
+
     return SpecNode(
         id=meta["id"],
         version=str(meta["version"]),
@@ -38,7 +45,7 @@ def parse_spec_file(file_path: Path) -> SpecNode:
         content=body,
         file_path=str(file_path),
         parent=meta.get("parent"),
-        depends_on=meta.get("depends_on", []),
+        depends_on=raw_depends,
         language=meta.get("language"),
     )
 
@@ -49,5 +56,8 @@ def discover_specs(root_dir: Path) -> list[SpecNode]:
     for path in sorted(root_dir.rglob("*.spec.md")):
         if "proposed" in path.parts:
             continue
-        nodes.append(parse_spec_file(path))
+        try:
+            nodes.append(parse_spec_file(path))
+        except (ValueError, OSError) as exc:
+            warnings.warn(f"Skipping {path}: {exc}", stacklevel=2)
     return nodes

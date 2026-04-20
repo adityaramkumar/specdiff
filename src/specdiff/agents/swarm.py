@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-import concurrent.futures
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -153,21 +152,10 @@ def _run_pipeline_custom(steps: list[PipelineStep], model: str, prompt: str) -> 
             outputs[agent.output_key] = resp.text
             context += f"\n\n--- {agent.output_key} ---\n{resp.text}"
         else:
-            with concurrent.futures.ThreadPoolExecutor() as pool:
-                future_map = {
-                    pool.submit(
-                        generate_content,
-                        model=model,
-                        contents=context,
-                        system_instruction=a.instruction,
-                    ): a
-                    for a in step.agents
-                }
-                for future in concurrent.futures.as_completed(future_map):
-                    agent = future_map[future]
-                    text = future.result().text
-                    outputs[agent.output_key] = text
-                    context += f"\n\n--- {agent.output_key} ---\n{text}"
+            raise RuntimeError(
+                f"Pipeline step has {len(step.agents)} agents;"
+                " only single-agent steps are supported."
+            )
 
     return outputs
 

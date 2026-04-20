@@ -132,3 +132,43 @@ class TestDiscoverSpecs:
         (tmp_path / "readme.md").write_text("# Not a spec")
         (tmp_path / "config.yaml").write_text("key: value")
         assert discover_specs(tmp_path) == []
+
+    def test_skips_invalid_specs_with_warning(self, tmp_path):
+        good = tmp_path / "good.spec.md"
+        good.write_text("---\nid: good/spec\nversion: '1.0.0'\nstatus: draft\n---\n\nBody\n")
+        bad = tmp_path / "bad.spec.md"
+        bad.write_text("---\nversion: '1.0.0'\nstatus: draft\n---\n\nMissing id\n")
+
+        with pytest.warns(UserWarning, match="Skipping"):
+            nodes = discover_specs(tmp_path)
+
+        assert len(nodes) == 1
+        assert nodes[0].id == "good/spec"
+
+
+class TestDependsOnValidation:
+    def _write(self, tmp_path, name: str, frontmatter_extra: str) -> object:
+        base = "---\nid: test/x\nversion: '1.0.0'\nstatus: draft\n"
+        f = tmp_path / name
+        f.write_text(base + frontmatter_extra + "---\n\nBody\n")
+        return f
+
+    def test_depends_on_string_raises(self, tmp_path):
+        f = self._write(tmp_path, "bad.spec.md", "depends_on: auth/login\n")
+        with pytest.raises(ValueError, match="depends_on.*list of strings"):
+            parse_spec_file(f)
+
+    def test_depends_on_list_of_ints_raises(self, tmp_path):
+        f = self._write(tmp_path, "bad.spec.md", "depends_on:\n  - 1\n  - 2\n")
+        with pytest.raises(ValueError, match="depends_on.*list of strings"):
+            parse_spec_file(f)
+
+    def test_depends_on_null_treated_as_empty(self, tmp_path):
+        f = self._write(tmp_path, "ok.spec.md", "depends_on: null\n")
+        node = parse_spec_file(f)
+        assert node.depends_on == []
+
+    def test_depends_on_valid_list(self, tmp_path):
+        f = self._write(tmp_path, "ok.spec.md", "depends_on:\n  - a/b\n  - c/d\n")
+        node = parse_spec_file(f)
+        assert node.depends_on == ["a/b", "c/d"]

@@ -152,7 +152,7 @@ def execute_swarm_cascade(
             dep_entry = hm.nodes.get(dep_id)
             if dep_entry:
                 for file_path in dep_entry.generated_files:
-                    with contextlib.suppress(OSError):
+                    with contextlib.suppress(FileNotFoundError):
                         dep_generated[file_path] = Path(file_path).read_text("utf-8")
 
         result: SwarmResult | None = None
@@ -182,7 +182,10 @@ def execute_swarm_cascade(
                 break
             prior_critique = result.review_feedback
 
-        assert result is not None
+        if result is None:
+            raise RuntimeError(
+                f"[{node.id}] swarm produced no result after {max_attempts} attempt(s)."
+            )
 
         if result.generated_tests and not config.test_command:
             click.echo(

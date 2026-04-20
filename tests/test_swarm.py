@@ -118,6 +118,20 @@ class TestRunPipelineCustom:
         assert mock_gen.call_count == 2
 
     @patch("specdiff.agents.swarm.generate_content")
+    def test_multi_agent_step_raises(self, mock_gen):
+        mock_gen.return_value = LLMResponse(text="output")
+        steps = [
+            PipelineStep(
+                agents=[
+                    PipelineAgent("a1", "inst1", "out1"),
+                    PipelineAgent("a2", "inst2", "out2"),
+                ]
+            ),
+        ]
+        with pytest.raises(RuntimeError, match="single-agent steps"):
+            _run_pipeline_custom(steps, "some-model", "prompt")
+
+    @patch("specdiff.agents.swarm.generate_content")
     def test_testing_receives_implementation_output_in_context(self, mock_gen):
         """Testing agent's context must include the generated_code from implementation."""
         call_contexts: dict[str, str] = {}
