@@ -55,16 +55,15 @@ class TestBuildSwarm:
         pipeline = build_swarm(config, _make_skills())
 
         assert pipeline.name == "build_pipeline"
-        assert len(pipeline.sub_agents) == 4
-        assert pipeline.sub_agents[0].name == "architect"
-        assert pipeline.sub_agents[1].name == "interface_planner"
-        assert pipeline.sub_agents[2].name == "generators"
-        assert pipeline.sub_agents[3].name == "review"
+        assert len(pipeline.sub_agents) == 5
+        names = [a.name for a in pipeline.sub_agents]
+        assert names == ["architect", "interface_planner", "implementation", "testing", "review"]
 
-        parallel = pipeline.sub_agents[2]
-        assert len(parallel.sub_agents) == 2
-        sub_names = {a.name for a in parallel.sub_agents}
-        assert sub_names == {"implementation", "testing"}
+    def test_testing_follows_implementation(self):
+        config = SpecdiffConfig()
+        pipeline = build_swarm(config, _make_skills())
+        names = [a.name for a in pipeline.sub_agents]
+        assert names.index("testing") == names.index("implementation") + 1
 
 
 # ---------------------------------------------------------------------------
@@ -76,44 +75,65 @@ class TestBuildPipeline:
     def test_structure(self):
         steps = build_pipeline(_make_skills())
 
-        assert len(steps) == 4
+        assert len(steps) == 5
 
-        assert len(steps[0].agents) == 1
         assert steps[0].agents[0].name == "architect"
         assert steps[0].agents[0].output_key == "file_plan"
 
-        assert len(steps[1].agents) == 1
         assert steps[1].agents[0].name == "interface_planner"
         assert steps[1].agents[0].output_key == "interface_spec"
 
-        assert len(steps[2].agents) == 2
-        parallel_names = {a.name for a in steps[2].agents}
-        assert parallel_names == {"implementation", "testing"}
+        assert steps[2].agents[0].name == "implementation"
+        assert steps[2].agents[0].output_key == "generated_code"
 
-        assert len(steps[3].agents) == 1
-        assert steps[3].agents[0].name == "review"
-        assert steps[3].agents[0].output_key == "review_result"
+        assert steps[3].agents[0].name == "testing"
+        assert steps[3].agents[0].output_key == "generated_tests"
+
+        assert steps[4].agents[0].name == "review"
+        assert steps[4].agents[0].output_key == "review_result"
+
+    def test_testing_follows_implementation(self):
+        steps = build_pipeline(_make_skills())
+        names = [s.agents[0].name for s in steps]
+        assert names.index("testing") == names.index("implementation") + 1
+
+    def test_all_steps_are_single_agent(self):
+        steps = build_pipeline(_make_skills())
+        for step in steps:
+            assert len(step.agents) == 1
 
 
 class TestRunPipelineCustom:
     @patch("specdiff.agents.swarm.generate_content")
-    def test_sequential_and_parallel(self, mock_gen):
+    def test_sequential_steps(self, mock_gen):
         mock_gen.return_value = LLMResponse(text="agent output")
         steps = [
             PipelineStep(agents=[PipelineAgent("a1", "inst1", "out1")]),
-            PipelineStep(
-                agents=[
-                    PipelineAgent("a2", "inst2", "out2"),
-                    PipelineAgent("a3", "inst3", "out3"),
-                ]
-            ),
+            PipelineStep(agents=[PipelineAgent("a2", "inst2", "out2")]),
         ]
         outputs = _run_pipeline_custom(steps, "grok-4-1-fast-non-reasoning", "prompt")
 
         assert "out1" in outputs
         assert "out2" in outputs
-        assert "out3" in outputs
-        assert mock_gen.call_count == 3
+        assert mock_gen.call_count == 2
+
+    @patch("specdiff.agents.swarm.generate_content")
+    def test_testing_receives_implementation_output_in_context(self, mock_gen):
+        """Testing agent's context must include the generated_code from implementation."""
+        call_contexts: dict[str, str] = {}
+
+        def capture(model, contents, system_instruction):
+            call_contexts[system_instruction] = contents
+            return LLMResponse(text="output from " + system_instruction[:4])
+
+        mock_gen.side_effect = capture
+        skills = _make_skills()
+        steps = build_pipeline(skills)
+        _run_pipeline_custom(steps, "grok-model", "initial prompt")
+
+        testing_context = call_contexts[skills["testing"]]
+        assert "generated_code" in testing_context
+        assert "output from " in testing_context
 
 
 # ---------------------------------------------------------------------------

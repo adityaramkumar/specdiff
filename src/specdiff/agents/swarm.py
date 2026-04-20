@@ -5,7 +5,7 @@ import concurrent.futures
 from dataclasses import dataclass
 from pathlib import Path
 
-from google.adk.agents import LlmAgent, ParallelAgent, SequentialAgent
+from google.adk.agents import LlmAgent, SequentialAgent
 from google.adk.runners import InMemoryRunner
 from google.genai import types as genai_types
 
@@ -54,14 +54,9 @@ def build_swarm(config: SpecdiffConfig, skill_content: dict[str, str]) -> Sequen
         output_key="review_result",
     )
 
-    parallel = ParallelAgent(
-        name="generators",
-        sub_agents=[implementation, testing],
-    )
-
     return SequentialAgent(
         name="build_pipeline",
-        sub_agents=[architect, interface_planner, parallel, review],
+        sub_agents=[architect, interface_planner, implementation, testing, review],
     )
 
 
@@ -127,6 +122,10 @@ def build_pipeline(skill_content: dict[str, str]) -> list[PipelineStep]:
         PipelineStep(
             agents=[
                 PipelineAgent("implementation", skill_content["implementation"], "generated_code"),
+            ]
+        ),
+        PipelineStep(
+            agents=[
                 PipelineAgent("testing", skill_content["testing"], "generated_tests"),
             ]
         ),
