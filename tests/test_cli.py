@@ -49,7 +49,7 @@ def _setup_project(tmp_path: Path, specs: list[dict], *, with_skill: bool = Fals
     return tmp_path
 
 
-def _mock_swarm_result(node, config, specs_dir, dep_specs=None):
+def _mock_swarm_result(node, config, specs_dir, **kwargs):
     """Fake swarm that returns a SwarmResult writing one file per node."""
     return SwarmResult(
         file_plan=FilePlan(files={f"{node.id.replace('/', '_')}.py": "impl"}),
@@ -60,7 +60,7 @@ def _mock_swarm_result(node, config, specs_dir, dep_specs=None):
     )
 
 
-def _mock_swarm_result_ts(node, config, specs_dir, dep_specs=None):
+def _mock_swarm_result_ts(node, config, specs_dir, **kwargs):
     return SwarmResult(
         file_plan=FilePlan(files={"auth/login.ts": "impl"}),
         generated_files={"auth/login.ts": "export function login() {}\n"},
@@ -70,7 +70,7 @@ def _mock_swarm_result_ts(node, config, specs_dir, dep_specs=None):
     )
 
 
-def _mock_swarm_result_with_tests(node, config, specs_dir, dep_specs=None):
+def _mock_swarm_result_with_tests(node, config, specs_dir, **kwargs):
     return SwarmResult(
         file_plan=FilePlan(files={"auth/login.ts": "impl", "tests/auth/login.test.ts": "test"}),
         generated_files={"auth/login.ts": "export function login() {}\n"},
@@ -80,7 +80,7 @@ def _mock_swarm_result_with_tests(node, config, specs_dir, dep_specs=None):
     )
 
 
-def _mock_swarm_review_fail(node, config, specs_dir, dep_specs=None):
+def _mock_swarm_review_fail(node, config, specs_dir, **kwargs):
     return SwarmResult(
         file_plan=FilePlan(files={"auth/login.ts": "impl"}),
         generated_files={"auth/login.ts": "export function login() {}\n"},

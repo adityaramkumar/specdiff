@@ -149,7 +149,7 @@ class TestBuildPrompt:
             file_path="contracts/api.spec.md",
         )
         prompt = _build_prompt(_make_node(), [dep], language="typescript")
-        assert "DEPENDENCY: contracts/api" in prompt
+        assert "DEPENDENCY SPEC: contracts/api" in prompt
         assert "API Contract" in prompt
 
 
@@ -474,3 +474,40 @@ class TestRunSwarmErrorPaths:
 
         with pytest.raises(ValueError, match="must return a JSON object"):
             run_swarm(_make_node(), SpecdiffConfig(), specs_dir)
+
+
+# ---------------------------------------------------------------------------
+# _build_prompt: dep_generated and prior_critique
+# ---------------------------------------------------------------------------
+
+
+class TestBuildPromptExtended:
+    def test_dep_generated_appears_in_prompt(self):
+        from specdiff.agents.swarm import _build_prompt
+
+        prompt = _build_prompt(
+            _make_node(),
+            dep_generated={"src/api.py": "def get(): pass"},
+            language="python",
+        )
+        assert "DEPENDENCY IMPLEMENTATION: src/api.py" in prompt
+        assert "def get(): pass" in prompt
+
+    def test_prior_critique_appears_in_prompt(self):
+        from specdiff.agents.swarm import _build_prompt
+
+        prompt = _build_prompt(_make_node(), prior_critique="Missing error handling.")
+        assert "PREVIOUS REVIEW CRITIQUE" in prompt
+        assert "Missing error handling." in prompt
+
+    def test_no_critique_section_when_none(self):
+        from specdiff.agents.swarm import _build_prompt
+
+        prompt = _build_prompt(_make_node(), prior_critique=None)
+        assert "PREVIOUS REVIEW CRITIQUE" not in prompt
+
+    def test_dep_generated_none_omitted(self):
+        from specdiff.agents.swarm import _build_prompt
+
+        prompt = _build_prompt(_make_node(), dep_generated=None, language="python")
+        assert "DEPENDENCY IMPLEMENTATION" not in prompt

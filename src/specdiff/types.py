@@ -59,6 +59,7 @@ class SpecdiffConfig:
     review_before_build: bool = False
     language: str = "python"
     test_framework: str | None = None
+    max_retries: int = 2
 
 
 @dataclass

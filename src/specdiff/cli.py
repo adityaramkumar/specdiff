@@ -32,6 +32,7 @@ def _load_config(specs_dir: Path) -> SpecdiffConfig:
         review_before_build=raw.get("review_before_build", False),
         language=raw.get("language", SpecdiffConfig.language),
         test_framework=raw.get("test_framework"),
+        max_retries=raw.get("max_retries", SpecdiffConfig.max_retries),
     )
 
 
@@ -276,14 +277,100 @@ output_dir: src
 specs_dir: .specdiff
 language: python
 review_before_build: false
+max_retries: 2
 """
     (specs_dir / "config.yaml").write_text(config_yaml)
 
-    # Placeholder skill
-    skill_content = """# spec-eval.skill.md
-Ensure the spec is completely unambiguous.
-"""
-    (specs_dir / "skills" / f"{SPEC_EVAL_SKILL}.skill.md").write_text(skill_content)
+    skills = {
+        SPEC_EVAL_SKILL: """\
+You are a spec quality reviewer. Assess whether the spec is precise enough to
+generate correct, unambiguous code from it without additional human input.
+
+Return a JSON object:
+  {"passed": true/false, "feedback": "...", "proposed_revision": "..." or null}
+
+- passed: true only if the spec is fully self-contained and unambiguous.
+- feedback: what is clear, and what (if anything) is vague or missing.
+- proposed_revision: if passed is false, a revised markdown spec body that
+  fixes all identified issues; otherwise null.
+""",
+        "architect": """\
+You are the Architect agent. Analyse the spec and produce the file layout for
+the implementation.
+
+Output ONLY a valid JSON object mapping each relative file path to a one-line
+description of that file's responsibility. No prose, no markdown fences.
+
+Example:
+{"auth/login.py": "Handles user login and returns a session token."}
+
+Rules:
+- Use the language and conventions stated in the prompt (.py, .ts, .go, etc.).
+- Only include files strictly required by the spec.
+- Keep paths relative to the output_dir (do not include the output_dir prefix).
+""",
+        "interface": """\
+You are the Interface Planner agent. Given the spec and the architect's file
+plan, define the precise public interface each file will expose.
+
+Output ONLY a valid JSON object mapping each file path to its complete interface
+definition as a string — function signatures, type annotations, class skeletons,
+and module exports. No implementations. No prose outside the JSON.
+
+Example:
+{"auth/login.py": "def login(username: str, password: str) -> dict[str, str]: ..."}
+
+Rules:
+- Match the language and test framework stated in the prompt.
+- Be exact: the Implementation agent will be held to these signatures.
+- If dependency implementations are provided in the prompt, match their API exactly.
+""",
+        "implementation": """\
+You are the Implementation agent. Given the spec, file plan, and interface
+definitions, write the complete, working implementation for every file.
+
+Output ONLY a valid JSON object mapping each file path to its complete file
+contents as a string. No prose, no markdown fences around the JSON itself.
+
+Rules:
+- Satisfy EVERY requirement stated in the spec.
+- Follow the exact signatures from the interface spec.
+- Do NOT include any tests — only implementation code.
+- If dependency implementations are provided, use their actual API exactly.
+- If a review critique is provided, fix every issue it identifies.
+""",
+        "testing": """\
+You are the Testing agent. Given the spec and interface definitions, write a
+comprehensive test suite that verifies every requirement in the spec.
+
+Output ONLY a valid JSON object mapping each test file path to its complete
+contents as a string. Return an empty object {} if no tests are appropriate.
+
+Rules:
+- Cover the happy path, all error cases, and edge cases stated in the spec.
+- Write tests against the interface spec — do not assume implementation details.
+- Use the test framework stated in the prompt; default to pytest (Python) or
+  vitest (TypeScript) if none is specified.
+- Test file naming: tests/test_<module>.py (Python) or <module>.test.ts (TS).
+""",
+        "review": """\
+You are the Review agent. Determine whether the generated implementation
+faithfully satisfies every requirement in the spec.
+
+Output ONLY a valid JSON object:
+  {"passed": true/false, "feedback": "..."}
+
+- passed: true only if ALL spec requirements are correctly implemented.
+- feedback: summarise what was verified; if failed, list each missing or
+  incorrect requirement with a specific, actionable description of the fix needed.
+
+Be strict. A partial implementation must return passed: false.
+""",
+    }
+
+    skills_dir = specs_dir / "skills"
+    for name, content in skills.items():
+        (skills_dir / f"{name}.skill.md").write_text(content)
 
     click.echo("Initialized empty specdiff project in .specdiff/")
 

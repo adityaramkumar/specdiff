@@ -181,15 +181,33 @@ def _run_pipeline_custom(steps: list[PipelineStep], model: str, prompt: str) -> 
 def _build_prompt(
     node: SpecNode,
     dep_specs: list[SpecNode] | None = None,
+    dep_generated: dict[str, str] | None = None,
     *,
     language: str = "python",
     test_framework: str | None = None,
+    prior_critique: str | None = None,
 ) -> str:
     dep_context = ""
     for dep in dep_specs or []:
-        dep_context += f"\n--- DEPENDENCY: {dep.id} ---\n{dep.content}\n--- END DEPENDENCY ---\n"
+        dep_context += (
+            f"\n--- DEPENDENCY SPEC: {dep.id} ---\n{dep.content}\n--- END DEPENDENCY SPEC ---\n"
+        )
+    for file_path, content in (dep_generated or {}).items():
+        dep_context += (
+            f"\n--- DEPENDENCY IMPLEMENTATION: {file_path} ---\n"
+            f"{content}\n--- END DEPENDENCY IMPLEMENTATION ---\n"
+        )
 
     framework_line = f"Test Framework: {test_framework}\n" if test_framework else ""
+
+    critique_section = ""
+    if prior_critique:
+        critique_section = (
+            f"\n--- PREVIOUS REVIEW CRITIQUE ---\n"
+            f"{prior_critique}\n"
+            f"Fix every issue listed above in your revised output.\n"
+            f"--- END CRITIQUE ---\n"
+        )
 
     return (
         f"Spec ID: {node.id}\n"
@@ -198,6 +216,7 @@ def _build_prompt(
         f"{framework_line}\n"
         f"--- SPEC CONTENT ---\n{node.content}\n--- END SPEC ---\n"
         f"{dep_context}"
+        f"{critique_section}"
     )
 
 
@@ -231,8 +250,10 @@ def run_swarm(
     config: SpecdiffConfig,
     specs_dir: Path,
     dep_specs: list[SpecNode] | None = None,
+    dep_generated: dict[str, str] | None = None,
+    prior_critique: str | None = None,
 ) -> SwarmResult:
-    """Run the full multi-agent swarm for a single spec node."""
+    """Run one attempt of the multi-agent swarm for a single spec node."""
     skills = discover_skills(specs_dir)
     missing = [s for s in REQUIRED_SKILLS if s not in skills]
     if missing:
@@ -242,7 +263,14 @@ def run_swarm(
         )
 
     language = node.language or config.language
-    prompt = _build_prompt(node, dep_specs, language=language, test_framework=config.test_framework)
+    prompt = _build_prompt(
+        node,
+        dep_specs,
+        dep_generated,
+        language=language,
+        test_framework=config.test_framework,
+        prior_critique=prior_critique,
+    )
 
     provider_name, _ = detect_provider(config.model)
     if provider_name == "gemini":

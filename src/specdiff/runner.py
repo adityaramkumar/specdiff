@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import contextlib
 import shutil
 import subprocess
 from datetime import datetime, timezone
@@ -10,7 +11,7 @@ import click
 from specdiff import hashmap
 from specdiff.agents.swarm import run_swarm
 from specdiff.graph import SpecGraph
-from specdiff.types import HashMap, SpecdiffConfig, SpecNode
+from specdiff.types import HashMap, SpecdiffConfig, SpecNode, SwarmResult
 
 BACKUP_DIR = ".backup"
 
@@ -143,13 +144,45 @@ def execute_swarm_cascade(
     for node in ordered_nodes:
         click.echo(f"  [{node.id}] running swarm...")
         dep_specs = [graph.nodes[d] for d in node.depends_on if d in graph.nodes]
-        try:
-            result = run_swarm(node, config, specs_dir, dep_specs=dep_specs)
-        except Exception as exc:
-            click.echo(f"  [{node.id}] swarm failed: {exc}", err=True)
-            all_restore = [f for files in all_written.values() for f in files]
-            restore(all_restore + all_prev_files, specs_dir)
-            return False
+
+        # Include the actual generated code for each dependency so the
+        # implementation agent sees real API shapes, not just the spec prose.
+        dep_generated: dict[str, str] = {}
+        for dep_id in node.depends_on:
+            dep_entry = hm.nodes.get(dep_id)
+            if dep_entry:
+                for file_path in dep_entry.generated_files:
+                    with contextlib.suppress(OSError):
+                        dep_generated[file_path] = Path(file_path).read_text("utf-8")
+
+        result: SwarmResult | None = None
+        prior_critique: str | None = None
+        max_attempts = config.max_retries + 1
+        for attempt in range(max_attempts):
+            if attempt > 0:
+                click.echo(
+                    f"  [{node.id}] review failed, retrying ({attempt}/{config.max_retries})..."
+                )
+            try:
+                result = run_swarm(
+                    node,
+                    config,
+                    specs_dir,
+                    dep_specs=dep_specs,
+                    dep_generated=dep_generated or None,
+                    prior_critique=prior_critique,
+                )
+            except Exception as exc:
+                click.echo(f"  [{node.id}] swarm failed: {exc}", err=True)
+                all_restore = [f for files in all_written.values() for f in files]
+                restore(all_restore + all_prev_files, specs_dir)
+                return False
+
+            if result.review_passed:
+                break
+            prior_critique = result.review_feedback
+
+        assert result is not None
 
         if result.generated_tests and not config.test_command:
             click.echo(
@@ -168,11 +201,15 @@ def execute_swarm_cascade(
         if not result.review_passed:
             if skip_review:
                 click.echo(
-                    f"  [{node.id}] review failed (--no-review, continuing): "
-                    f"{result.review_feedback}",
+                    f"  [{node.id}] review failed after {max_attempts} attempt(s)"
+                    f" (--no-review, continuing): {result.review_feedback}",
                 )
             else:
-                click.echo(f"  [{node.id}] review failed: {result.review_feedback}", err=True)
+                click.echo(
+                    f"  [{node.id}] review failed after {max_attempts} attempt(s): "
+                    f"{result.review_feedback}",
+                    err=True,
+                )
                 all_restore = [f for files in all_written.values() for f in files]
                 restore(all_restore + all_prev_files, specs_dir)
                 return False

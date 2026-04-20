@@ -35,7 +35,7 @@ def _make_node(node_id: str = "test/example", spec_hash: str = "abc123") -> Spec
     )
 
 
-def _swarm_ok(node, config, specs_dir, dep_specs=None):
+def _swarm_ok(node, config, specs_dir, **kwargs):
     return SwarmResult(
         file_plan=FilePlan(files={f"{node.id.replace('/', '_')}.py": "impl"}),
         generated_files={f"{node.id.replace('/', '_')}.py": f"# {node.id}\n"},
@@ -45,7 +45,7 @@ def _swarm_ok(node, config, specs_dir, dep_specs=None):
     )
 
 
-def _swarm_review_fail(node, config, specs_dir, dep_specs=None):
+def _swarm_review_fail(node, config, specs_dir, **kwargs):
     return SwarmResult(
         file_plan=FilePlan(files={"out.py": "impl"}),
         generated_files={"out.py": "# code\n"},
@@ -451,11 +451,11 @@ class TestExecuteSwarmCascade:
 
         call_count = {"n": 0}
 
-        def _fail_on_second(node, config, specs_dir, dep_specs=None):
+        def _fail_on_second(node, config, specs_dir, **kwargs):
             call_count["n"] += 1
             if call_count["n"] > 1:
                 raise RuntimeError("second node failed")
-            return _swarm_ok(node, config, specs_dir, dep_specs)
+            return _swarm_ok(node, config, specs_dir)
 
         with patch("specdiff.runner.run_swarm", side_effect=_fail_on_second):
             ok = execute_swarm_cascade([node_a, node_b], config, map_, graph, specs_dir)
@@ -463,3 +463,165 @@ class TestExecuteSwarmCascade:
         assert ok is False
         assert "contracts/api" not in map_.nodes
         assert "behaviors/login" not in map_.nodes
+
+
+# ---------------------------------------------------------------------------
+# Retry loop and dep_generated context
+# ---------------------------------------------------------------------------
+
+
+class TestRetryLoop:
+    def test_retries_on_review_failure_then_succeeds(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        specs_dir = tmp_path / ".specdiff"
+        specs_dir.mkdir()
+        node = _make_node()
+        graph = build_graph([node])
+        map_ = HashMap()
+        config = SpecdiffConfig(max_retries=2)
+
+        attempts = {"n": 0}
+
+        def _fail_then_pass(node, config, specs_dir, **kwargs):
+            attempts["n"] += 1
+            if attempts["n"] < 3:
+                return SwarmResult(
+                    file_plan=FilePlan(files={"out.py": "impl"}),
+                    generated_files={"out.py": "# code\n"},
+                    generated_tests={},
+                    review_passed=False,
+                    review_feedback="missing error handling",
+                )
+            return _swarm_ok(node, config, specs_dir)
+
+        with (
+            patch("specdiff.runner.run_swarm", side_effect=_fail_then_pass),
+            patch("specdiff.runner.run_tests", return_value=(True, "")),
+        ):
+            ok = execute_swarm_cascade([node], config, map_, graph, specs_dir)
+
+        assert ok is True
+        assert node.id in map_.nodes
+        assert attempts["n"] == 3
+
+    def test_critique_passed_on_retry(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        specs_dir = tmp_path / ".specdiff"
+        specs_dir.mkdir()
+        node = _make_node()
+        graph = build_graph([node])
+        map_ = HashMap()
+        config = SpecdiffConfig(max_retries=1)
+
+        received_critiques = []
+
+        def _capture_critique(node, config, specs_dir, prior_critique=None, **kwargs):
+            received_critiques.append(prior_critique)
+            if prior_critique is None:
+                return SwarmResult(
+                    file_plan=FilePlan(files={"out.py": "impl"}),
+                    generated_files={"out.py": "# code\n"},
+                    generated_tests={},
+                    review_passed=False,
+                    review_feedback="needs auth check",
+                )
+            return _swarm_ok(node, config, specs_dir)
+
+        with (
+            patch("specdiff.runner.run_swarm", side_effect=_capture_critique),
+            patch("specdiff.runner.run_tests", return_value=(True, "")),
+        ):
+            ok = execute_swarm_cascade([node], config, map_, graph, specs_dir)
+
+        assert ok is True
+        assert received_critiques[0] is None
+        assert received_critiques[1] == "needs auth check"
+
+    def test_exhausted_retries_aborts(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        specs_dir = tmp_path / ".specdiff"
+        specs_dir.mkdir()
+        node = _make_node()
+        graph = build_graph([node])
+        map_ = HashMap()
+        config = SpecdiffConfig(max_retries=1)
+
+        with patch("specdiff.runner.run_swarm", side_effect=_swarm_review_fail):
+            ok = execute_swarm_cascade([node], config, map_, graph, specs_dir)
+
+        assert ok is False
+        assert node.id not in map_.nodes
+
+    def test_max_retries_zero_makes_single_attempt(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        specs_dir = tmp_path / ".specdiff"
+        specs_dir.mkdir()
+        node = _make_node()
+        graph = build_graph([node])
+        map_ = HashMap()
+        config = SpecdiffConfig(max_retries=0)
+
+        call_count = {"n": 0}
+
+        def _count_calls(node, config, specs_dir, **kwargs):
+            call_count["n"] += 1
+            return _swarm_review_fail(node, config, specs_dir)
+
+        with patch("specdiff.runner.run_swarm", side_effect=_count_calls):
+            ok = execute_swarm_cascade([node], config, map_, graph, specs_dir)
+
+        assert ok is False
+        assert call_count["n"] == 1
+
+
+class TestDepGeneratedContext:
+    def test_dep_generated_files_passed_to_swarm(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        specs_dir = tmp_path / ".specdiff"
+        specs_dir.mkdir()
+
+        dep_node = _make_node("contracts/api", "dep_hash")
+        main_node = SpecNode(
+            id="behaviors/login",
+            version="1.0.0",
+            status="approved",
+            hash="main_hash",
+            content="## Login",
+            file_path=".specdiff/behaviors/login.spec.md",
+            depends_on=["contracts/api"],
+        )
+        graph = build_graph([dep_node, main_node])
+
+        # Simulate contracts/api already having generated files in the hashmap
+        dep_file = tmp_path / "src" / "contracts_api.py"
+        dep_file.parent.mkdir(parents=True)
+        dep_file.write_text("class API: pass\n")
+
+        map_ = HashMap(
+            nodes={
+                "contracts/api": HashMapEntry(
+                    spec_hash="dep_hash",
+                    generated_files=[str(dep_file)],
+                    generated_at="",
+                )
+            }
+        )
+
+        received_dep_generated = {}
+
+        def _capture(node, config, specs_dir, dep_generated=None, **kwargs):
+            if dep_generated:
+                received_dep_generated.update(dep_generated)
+            return _swarm_ok(node, config, specs_dir)
+
+        with (
+            patch("specdiff.runner.run_swarm", side_effect=_capture),
+            patch("specdiff.runner.run_tests", return_value=(True, "")),
+        ):
+            ok = execute_swarm_cascade(
+                [main_node], config=SpecdiffConfig(), hm=map_, graph=graph, specs_dir=specs_dir
+            )
+
+        assert ok is True
+        assert str(dep_file) in received_dep_generated
+        assert "class API: pass" in received_dep_generated[str(dep_file)]
