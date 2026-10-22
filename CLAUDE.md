@@ -15,10 +15,13 @@ pytest tests/ -v
 pytest tests/test_cli.py::TestBuildCommand::test_builds_one_node -v
 
 # Lint
-ruff check src/ tests/
+ruff check src/ tests/ evals/
 
 # Format
-ruff format src/ tests/
+ruff format src/ tests/ evals/
+
+# Evals (real model + API key; scores hidden tests)
+python -m evals.run --model claude-opus-5-5 [--case slugify] [--repeat 3]
 
 # UI development
 cd ui && npm install && npm run dev

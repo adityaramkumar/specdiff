@@ -44,6 +44,8 @@ def run_command(command: str, cwd: Path | None = None) -> tuple[bool, str]:
     """Run a shell command from the project root. Returns (passed, combined output)."""
     result = subprocess.run(command, shell=True, capture_output=True, text=True, cwd=cwd)
     output = result.stdout + result.stderr
+    # pytest exits 5 when it collects nothing, e.g. before any spec with tests is built.
+    passed = result.returncode == 0 or (result.returncode == 5 and "no tests ran" in output)
     if len(output) > MAX_OUTPUT_CHARS:
         output = "[...output truncated...]\n" + output[-MAX_OUTPUT_CHARS:]
-    return result.returncode == 0, output
+    return passed, output

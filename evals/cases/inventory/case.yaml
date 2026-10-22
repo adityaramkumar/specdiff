@@ -1,0 +1,3 @@
+reference:
+  contracts/models: [inventory_models.py]
+  behaviors/inventory: [inventory.py]

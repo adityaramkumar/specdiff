@@ -301,6 +301,17 @@ A file in `.specdiff/skills/` replaces the built-in version. Output formats are 
 
 For the broader design vision and planned extensions beyond the current implementation, see [DESIGN.md](DESIGN.md).
 
+## Evals
+
+`evals/` scores the pipeline end to end on small spec projects with hidden tests the agents never see:
+
+```bash
+python -m evals.run --model claude-opus-5-5            # all cases
+python -m evals.run --model gemini-2.5-flash --case inventory --repeat 3
+```
+
+Each case lists how many specs built, how many repairs it took, how many hidden tests pass, tokens used and time. Run it before and after changing a skill or a stage prompt to see whether the change helped. Results are saved under `evals/results/`. CI runs every case with its reference solution in place of a model, which proves the case is solvable and its hidden tests are right.
+
 ## Development
 
 ### UI
