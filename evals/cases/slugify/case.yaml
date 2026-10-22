@@ -1,0 +1,2 @@
+reference:
+  behaviors/slugify: [slugify.py]

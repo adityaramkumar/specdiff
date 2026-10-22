@@ -78,7 +78,8 @@ Testing tip: `tests/fake_llm.py` stands in for every provider by replying per (s
 1. **Bug fixes** -- open an issue first, then submit a PR with a test that reproduces the bug.
 2. **New features** -- discuss in an issue before writing code. The phased build plan in [DESIGN.md](DESIGN.md) describes what's planned.
 3. **Examples** -- new example projects in `examples/` are welcome. Each should be self-contained with its own `.specdiff/` directory and a `test_command` that actually finds its tests.
-4. **Skills** -- improvements to `src/specdiff/default_skills/` that produce better generation output.
+4. **Skills** -- improvements to `src/specdiff/default_skills/` that produce better generation output. Include `python -m evals.run` results from before and after the change.
+5. **Eval cases** -- add a directory under `evals/cases/` with `specs/`, `hidden_tests/`, `reference/` and a `case.yaml` mapping each spec to its reference files. `tests/test_evals.py` checks the reference passes.
 
 ## Code Style
 

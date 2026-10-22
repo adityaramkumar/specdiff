@@ -15,8 +15,8 @@ jobs:
         with:
           python-version: "3.13"
       - run: pip install ruff
-      - run: ruff check src/ tests/
-      - run: ruff format --check src/ tests/
+      - run: ruff check src/ tests/ evals/
+      - run: ruff format --check src/ tests/ evals/
 
   test:
     runs-on: ubuntu-latest

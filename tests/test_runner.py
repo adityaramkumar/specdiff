@@ -284,3 +284,13 @@ class TestInterrupt:
 
         assert not Path("src/a.py").exists()
         assert not (project / BACKUP_DIR).exists()
+
+
+class TestSpecsWithoutTests:
+    def test_spec_with_no_test_files_builds_when_suite_is_empty(self, project, fake_llm):
+        fake_llm.reply("a", "plan", '<code path="a.py">types only</code><interface>\n</interface>')
+
+        report, _ = _build(project, [_node("a")])
+
+        assert report.ok
+        assert "test" not in fake_llm.stages("a")

@@ -25,6 +25,7 @@ class BuildReport:
     built: list[str] = field(default_factory=list)
     failed: dict[str, str] = field(default_factory=dict)
     skipped: dict[str, str] = field(default_factory=dict)
+    repairs: int = 0
     usage: Usage = field(default_factory=Usage)
 
     @property
@@ -127,6 +128,7 @@ def _build_node(node: SpecNode, cfg: PipelineConfig, config: SpecdiffConfig, hm:
         raise
 
     report.usage += outcome.usage
+    report.repairs += outcome.repairs
     if not outcome.ok:
         writer.rollback()
         report.failed[node.id] = outcome.error
