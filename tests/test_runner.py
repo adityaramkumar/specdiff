@@ -13,6 +13,7 @@ from specdiff.runner import (
     backup,
     clean_backups,
     execute_swarm_cascade,
+    resolve_output_path,
     restore,
     run_tests,
 )
@@ -737,3 +738,109 @@ class TestDepGeneratedContext:
         assert ok is True
         assert str(dep_file) in received_dep_generated
         assert "class API: pass" in received_dep_generated[str(dep_file)]
+
+
+# ---------------------------------------------------------------------------
+# Output path safety and rollback of hand-written files
+# ---------------------------------------------------------------------------
+
+
+def _swarm_writes(files: dict[str, str]):
+    def _run(node, config, specs_dir, **kwargs):
+        return SwarmResult(
+            file_plan=FilePlan(files={k: "impl" for k in files}),
+            generated_files=files,
+            generated_tests={},
+            review_passed=True,
+            review_feedback="ok",
+        )
+
+    return _run
+
+
+class TestResolveOutputPath:
+    def test_accepts_nested_relative_path(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        assert resolve_output_path("src", "auth/login.py") == Path("src/auth/login.py")
+
+    @pytest.mark.parametrize("bad", ["../escape.py", "auth/../../escape.py", "/etc/passwd"])
+    def test_rejects_paths_outside_output_dir(self, tmp_path, monkeypatch, bad):
+        monkeypatch.chdir(tmp_path)
+        with pytest.raises(ValueError, match="escapes output_dir"):
+            resolve_output_path("src", bad)
+
+
+class TestWriteSafety:
+    def _setup(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        specs_dir = tmp_path / ".specdiff"
+        specs_dir.mkdir()
+        node = _make_node()
+        return specs_dir, node, build_graph([node])
+
+    def test_escaping_path_aborts_without_writing(self, tmp_path, monkeypatch):
+        specs_dir, node, graph = self._setup(tmp_path, monkeypatch)
+        files = {"ok.py": "x = 1\n", "../outside.py": "evil\n"}
+        map_ = HashMap()
+
+        with patch("specdiff.runner.run_swarm", side_effect=_swarm_writes(files)):
+            ok = execute_swarm_cascade([node], SpecdiffConfig(), map_, graph, specs_dir)
+
+        assert ok is False
+        assert not (tmp_path / "outside.py").exists()
+        assert not (tmp_path / "src" / "ok.py").exists()
+        assert node.id not in map_.nodes
+
+    def test_hand_written_file_restored_on_test_failure(self, tmp_path, monkeypatch):
+        specs_dir, node, graph = self._setup(tmp_path, monkeypatch)
+        hand_written = tmp_path / "src" / "index.py"
+        hand_written.parent.mkdir()
+        hand_written.write_text("# mine\n")
+        config = SpecdiffConfig(test_command="pytest")
+
+        with (
+            patch("specdiff.runner.run_swarm", side_effect=_swarm_writes({"index.py": "gen\n"})),
+            patch("specdiff.runner.run_tests", return_value=(False, "failed")),
+        ):
+            ok = execute_swarm_cascade([node], config, HashMap(), graph, specs_dir)
+
+        assert ok is False
+        assert hand_written.read_text() == "# mine\n"
+
+    def test_interrupt_rolls_back_and_reraises(self, tmp_path, monkeypatch):
+        specs_dir, node, graph = self._setup(tmp_path, monkeypatch)
+        hand_written = tmp_path / "src" / "index.py"
+        hand_written.parent.mkdir()
+        hand_written.write_text("# mine\n")
+        config = SpecdiffConfig(test_command="pytest")
+
+        with (
+            patch("specdiff.runner.run_swarm", side_effect=_swarm_writes({"index.py": "gen\n"})),
+            patch("specdiff.runner.run_tests", side_effect=KeyboardInterrupt),
+            pytest.raises(KeyboardInterrupt),
+        ):
+            execute_swarm_cascade([node], config, HashMap(), graph, specs_dir)
+
+        assert hand_written.read_text() == "# mine\n"
+        assert not (specs_dir / BACKUP_DIR).exists()
+
+    def test_leftover_backup_dir_blocks_build(self, tmp_path, monkeypatch):
+        specs_dir, node, graph = self._setup(tmp_path, monkeypatch)
+        (specs_dir / BACKUP_DIR).mkdir()
+
+        with patch("specdiff.runner.run_swarm") as mock_swarm:
+            ok = execute_swarm_cascade([node], SpecdiffConfig(), HashMap(), graph, specs_dir)
+
+        assert ok is False
+        mock_swarm.assert_not_called()
+
+    def test_backup_keeps_first_copy(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        specs_dir = tmp_path / ".specdiff"
+        target = tmp_path / "f.py"
+        target.write_text("original")
+        backup(["f.py"], specs_dir)
+        target.write_text("overwritten by first node")
+        backup(["f.py"], specs_dir)
+
+        assert (specs_dir / BACKUP_DIR / "f.py").read_text() == "original"
