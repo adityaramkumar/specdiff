@@ -84,3 +84,29 @@ class TestUpdate:
         hashmap.update(m, "a", "h2", ["f2.py"])
         assert m.nodes["a"].spec_hash == "h2"
         assert m.nodes["a"].generated_files == ["f2.py"]
+
+
+class TestOutputHashes:
+    def test_update_records_hash_of_each_existing_file(self, tmp_path):
+        f = tmp_path / "a.py"
+        f.write_text("x = 1\n")
+        m = HashMap()
+        hashmap.update(m, "n", "h", [str(f), str(tmp_path / "missing.py")])
+        assert m.nodes["n"].output_hashes == {str(f): hashmap.file_hash(f)}
+
+    def test_modified_files_detects_edits_only(self, tmp_path):
+        edited, untouched, deleted = (tmp_path / n for n in ("e.py", "u.py", "d.py"))
+        for f in (edited, untouched, deleted):
+            f.write_text("orig\n")
+        m = HashMap()
+        hashmap.update(m, "n", "h", [str(edited), str(untouched), str(deleted)])
+        edited.write_text("changed\n")
+        deleted.unlink()
+        assert hashmap.modified_files(m.nodes["n"]) == [str(edited)]
+
+    def test_entries_without_output_hashes_load(self):
+        entry = HashMapEntry.from_dict(
+            {"spec_hash": "h", "generated_files": [], "generated_at": ""}
+        )
+        assert entry.output_hashes == {}
+        assert hashmap.modified_files(entry) == []

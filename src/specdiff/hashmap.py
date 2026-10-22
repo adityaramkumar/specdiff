@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 from datetime import datetime, timezone
@@ -44,10 +45,24 @@ def is_stale(hm: HashMap, node_id: str, current_hash: str) -> bool:
     return entry.spec_hash != current_hash
 
 
+def file_hash(path: Path) -> str:
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
 def update(hm: HashMap, node_id: str, spec_hash: str, generated_files: list[str]) -> None:
-    """Upsert a hash map entry with the current timestamp."""
+    """Upsert a hash map entry, recording the current content hash of each generated file."""
     hm.nodes[node_id] = HashMapEntry(
         spec_hash=spec_hash,
         generated_files=generated_files,
         generated_at=datetime.now(timezone.utc).isoformat(),
+        output_hashes={f: file_hash(Path(f)) for f in generated_files if Path(f).exists()},
     )
+
+
+def modified_files(entry: HashMapEntry) -> list[str]:
+    """Generated files whose contents changed on disk since they were written."""
+    return [
+        f
+        for f, recorded in entry.output_hashes.items()
+        if Path(f).exists() and file_hash(Path(f)) != recorded
+    ]

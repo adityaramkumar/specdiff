@@ -926,3 +926,37 @@ class TestValidate:
         assert "missing/x" in result.output
         assert "missing/y" in result.output
         assert "2 error(s)" in result.output
+
+
+class TestHandEdits:
+    def _build_then_edit(self, tmp_path):
+        proj = _setup_project(
+            tmp_path, [{"path": "behaviors/auth/login.spec.md", "id": "auth/login"}]
+        )
+        os.chdir(proj)
+        with patch("specdiff.runner.run_swarm", side_effect=_mock_swarm_result):
+            result = CliRunner().invoke(cli, ["build"], catch_exceptions=False)
+        assert result.exit_code == 0, result.output
+        generated = proj / "src" / "auth_login.py"
+        generated.write_text("# hotfix\n")
+        spec = proj / ".specdiff" / "behaviors" / "auth" / "login.spec.md"
+        spec.write_text(spec.read_text() + "\nMore detail.\n")
+        return generated
+
+    def test_status_lists_edited_files(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        self._build_then_edit(tmp_path)
+        result = CliRunner().invoke(cli, ["status"], catch_exceptions=False)
+        assert "edited by hand" in result.output
+        assert "src/auth_login.py" in result.output
+
+    def test_build_refuses_then_force_overwrites(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        generated = self._build_then_edit(tmp_path)
+        with patch("specdiff.runner.run_swarm", side_effect=_mock_swarm_result):
+            refused = CliRunner().invoke(cli, ["build"])
+            assert refused.exit_code == 1
+            assert generated.read_text() == "# hotfix\n"
+            forced = CliRunner().invoke(cli, ["build", "--force"], catch_exceptions=False)
+        assert forced.exit_code == 0, forced.output
+        assert "# generated from auth/login" in generated.read_text()
