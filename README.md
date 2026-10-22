@@ -14,11 +14,14 @@ Write short, human-readable specs. Specdiff generates the code, tracks what chan
 pip install -e ".[dev]"
 ```
 
-Set your Gemini API key:
+Set the API key for the model you configure:
 
-```bash
-export GEMINI_API_KEY=your-key-here
-```
+| Model prefix | Provider | Environment variable |
+|---|---|---|
+| `gemini-*` | Google | `GEMINI_API_KEY` |
+| `claude-*` | Anthropic | `ANTHROPIC_API_KEY` |
+| `gpt-*`, `o1*`, `o3*`, `o4*` | OpenAI | `OPENAI_API_KEY` |
+| `grok-*` | xAI | `XAI_API_KEY` |
 
 ## Project Setup
 
@@ -28,13 +31,7 @@ Create a `.specdiff/` directory in your project root with a config and your spec
 your-project/
   .specdiff/
     config.yaml
-    skills/
-      architect.skill.md
-      interface.skill.md
-      implementation.skill.md
-      testing.skill.md
-      review.skill.md
-      spec-eval.skill.md
+    skills/              # optional overrides of the built-in agent prompts
     contracts/
       api/users.spec.md
     behaviors/
@@ -43,7 +40,7 @@ your-project/
         signup.spec.md
 ```
 
-Run `specdiff init` to scaffold the directory with a `config.yaml` and all required skill files automatically.
+Run `specdiff init` to scaffold the directory with a `config.yaml` and an example spec.
 
 Minimal `config.yaml`:
 
@@ -80,9 +77,7 @@ Four generated example snapshots in [`examples/`](examples/), each with specs an
 | [`fullstack-todo/`](examples/fullstack-todo) | Todo app with backend + frontend. Cross-layer dependencies, component specs. |
 | [`data-pipeline/`](examples/data-pipeline) | Event processing ETL. Sequential pipeline specs, schema contracts, multi-step dependencies. |
 
-These examples are primarily for inspecting generated structure and spec relationships. They are not currently packaged as fully runnable standalone apps.
-
-Skill files in each example's `.specdiff/skills/` are copies of the files in `examples/shared-skills/`. Update `shared-skills/` when improving skill content, then copy the changes into each example.
+These are snapshots produced by an earlier version of the pipeline, kept as a record. When they were audited, many of their generated tests failed; [docs/example-audit.md](docs/example-audit.md) explains why, and how the current pipeline addresses each cause.
 
 ## How to Retrofit an Existing Codebase
 
@@ -106,27 +101,41 @@ Specdiff is designed for spec-first development, but you can bootstrap it onto a
 
 ### `specdiff build [node_id]`
 
-Generate code from specs. Only stale nodes are rebuilt. If a spec depends on a changed contract, it's automatically included in the cascade.
+Generate code for stale specs, prerequisites first. Each spec goes through:
+
+1. **Plan** -- files, and the exact public interface (signatures, error messages) code and tests must share.
+2. **Implement** and **test**, in parallel. Tests are written from the spec and plan, not from the code.
+3. **Checks** -- path and ownership rules, Python syntax, your `check_command`, then your `test_command`.
+4. **Repair** -- any failing check's real output goes back to the model, up to `max_retries` times.
+5. **Review** -- once checks pass, an LLM confirms the code does everything the spec asks and nothing more.
 
 ```
 $ specdiff build
-Building 3 node(s)...
+Building 2 node(s)...
 
-  [contracts/api/users] running swarm...
-  [contracts/api/users] done.
-  [behaviors/auth/login] running swarm...
-  [behaviors/auth/login] done.
-  [behaviors/auth/signup] running swarm...
-  [behaviors/auth/signup] done.
+  [contracts/api/users] planning
+  [contracts/api/users] writing code and tests
+  [contracts/api/users] running tests
+  [contracts/api/users] reviewing
+  [contracts/api/users] done: 4 file(s), 0 repair(s), 4 LLM call(s), 6,210 in / 2,904 out tokens
+  [behaviors/auth/login] planning
+  [behaviors/auth/login] writing code and tests
+  [behaviors/auth/login] running tests
+  [behaviors/auth/login] repairing (1/2): Tests failed: `PYTHONPATH=src python -m pytest -q src`
+  [behaviors/auth/login] running tests
+  [behaviors/auth/login] reviewing
+  [behaviors/auth/login] done: 3 file(s), 1 repair(s), 5 LLM call(s), 14,880 in / 4,120 out tokens
 
-Build complete.
+Built 2, failed 0, skipped 0. 9 LLM call(s), 21,090 in / 7,024 out tokens.
 ```
 
-If the review agent rejects an implementation, the swarm retries automatically (up to `max_retries` times) with the critique fed back as context. If tests fail after generation, all files are rolled back.
+Each spec is saved as soon as it passes. If one fails, only its files are rolled back and only specs downstream of it are skipped; everything else still builds.
+
+Every prompt includes the project's file map. A spec may not write a file another spec owns, or any existing file specdiff did not generate.
 
 Specdiff records a hash of every file it writes. If you edit a generated file by hand, `build` refuses to overwrite it and lists the edited files (so does `status`). Move the change into the spec, or pass `--force` to overwrite.
 
-Use `--no-review` to skip the review gate and always write the generated output. Use `specdiff build <node_id>` to target a single node.
+Use `--no-review` to skip the LLM review stage. Use `specdiff build <node_id>` to build one node and whatever it needs.
 
 Use `--dry-run` to preview the full build plan (nodes, order, reason) without invoking any LLM:
 
@@ -169,7 +178,7 @@ Total: 3 node(s)
 
 ### `specdiff review [node_id]`
 
-Run the Spec Agent to check if specs are clear enough for generation. Requires a skill file at `.specdiff/skills/spec-eval.skill.md`.
+Run the Spec Agent to check if specs are clear enough for generation: exact error messages, counts, validation rules, output formats.
 
 ```
 $ specdiff review behaviors/auth/login
@@ -243,27 +252,33 @@ Extraction complete! Initialized 2 specs in .specdiff.
 
 | Field | Default | Description |
 |---|---|---|
-| `model` | `gemini-2.5-flash` | LLM model for generation and review. Gemini models use the ADK pipeline; xAI (`grok-*`) models use the OpenAI-compatible path. |
-| `output_dir` | `src` | Where generated files are written |
+| `model` | `gemini-2.5-flash` | Model for every stage; the prefix picks the provider (see Install) |
+| `output_dir` | `src` | Where generated files are written; also the import root agents are told to use |
 | `specs_dir` | `.specdiff` | Where spec files live |
-| `language` | `python` | Target programming language for code generation |
-| `test_framework` | (none) | Test framework hint passed to agents (e.g. `pytest`, `vitest`) |
-| `test_command` | (none) | Shell command to run before and after generation. Required when generated tests are present. |
+| `language` | `python` | Target language (a spec's `language` field overrides it) |
+| `test_framework` | (none) | Test framework named to agents (e.g. `pytest`, `vitest`) |
+| `test_command` | (none) | Run after each spec is generated, and once before the build as a baseline. Without it, no tests are generated and output is unverified. |
+| `check_command` | (none) | Extra command that must pass, e.g. `npx tsc --noEmit` |
 | `review_before_build` | `false` | Require spec review to pass before build |
-| `max_retries` | `2` | How many times to retry a failing swarm before giving up. On each retry the review critique is fed back into the prompt. |
+| `max_retries` | `2` | Repair attempts per spec after a failed check |
+
+## Skills
+
+Each stage runs with a built-in prompt: `plan`, `implement`, `test`, `repair`, `review`, and `spec-eval` for `specdiff review`. To change one, print it into your project and edit it:
+
+```bash
+specdiff skill implement > .specdiff/skills/implement.skill.md
+```
+
+A file in `.specdiff/skills/` replaces the built-in version. Output formats are enforced by specdiff, not by skills, so a custom skill can't break parsing. Changing a build skill marks every spec stale.
 
 ## How It Works
 
-1. Each spec has a SHA-256 hash of its body content plus graph-shaping frontmatter like dependencies and version
-2. A hash map (`.specdiff/hash-map.json`) tracks which hash produced which files
-3. On build, only specs with changed hashes are regenerated
-4. Specs declare dependencies via `depends_on` — changing a contract cascades to all dependents
-5. When building a node, the actual generated code of its dependencies is included in the prompt so the implementation agent sees real API shapes
-6. The multi-agent swarm runs: Architect → Interface Planner → (Implementation ‖ Testing) → Review
-7. If the Review agent rejects the output, the swarm retries up to `max_retries` times with the critique fed back as context
-8. Every generated file gets a traceability header linking it back to its spec
-9. If generated tests exist, Specdiff requires a configured `test_command` and runs it before and after generation
-10. If tests fail after generation, all files are rolled back to their previous state
+1. Each spec is fingerprinted from its content, its dependencies' and parent's fingerprints, the build skills, and the model/language/test settings. `.specdiff/hash-map.json` records the inputs of the last build, so `status` can say exactly why a spec is stale.
+2. Agents see the spec, its parent specs, its dependency specs, the code already generated for its dependencies, its own previous files, and which paths other specs own.
+3. Agents return files as `<file path="...">` blocks with verbatim contents. Code never passes through JSON, which models escape incorrectly often enough to corrupt files.
+4. Deterministic checks run before any LLM judgement, and their real output drives repair.
+5. Every generated file gets a traceability header naming its spec, and every overwritten or deleted file is backed up until its spec's build succeeds.
 
 For the broader design vision and planned extensions beyond the current implementation, see [DESIGN.md](DESIGN.md).
 

@@ -27,7 +27,7 @@ cd ui && npm install && npm run dev
 cd ui && npm run build
 ```
 
-Set `GEMINI_API_KEY` (or `XAI_API_KEY` for xAI/OpenAI-compatible models) before running the tool.
+Set the API key for the configured model's provider before running the tool: `GEMINI_API_KEY`, `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, or `XAI_API_KEY`.
 
 ## Architecture
 
@@ -38,37 +38,32 @@ Specdiff is a spec-driven code generation framework: `.spec.md` files are the so
 1. **Parse** — `parser.py` reads `.spec.md` files (YAML frontmatter + body), computes SHA-256 hashes. The hash payload excludes the `status` and `hash` frontmatter fields so editorial-only changes don't trigger rebuilds.
 2. **Graph** — `graph.py` builds a directed graph where both `depends_on` and `parent` are prerequisite edges; it rejects duplicate IDs, dangling references and cycles. Parent spec text is passed to agents root-first ahead of the node's own spec.
 3. **Plan** — `plan.py` fingerprints each node from its spec hash, its dependencies' and parent's fingerprints, the build skills, and model/language/test settings. Diffing against the `inputs` recorded in `.specdiff/hash-map.json` gives staleness *with reasons* ("contracts/users changed", "skills changed"); changes propagate downstream through fingerprints, so there is no separate cascade step. `plan_build()` orders stale nodes prerequisites-first and skips stale `draft` specs plus anything downstream of them. Hash-map writes are atomic (`.tmp` then `os.replace`).
-4. **Run** — `runner.py` orchestrates: backup existing files to `.specdiff/.backup/` → run baseline tests → invoke swarm → run tests again → rollback on failure.
-5. **Swarm** — `agents/swarm.py` runs a multi-agent pipeline that produces code.
+4. **Build** — `build/runner.py` runs preflight (leftover backup, hand edits, baseline tests), then for each node builds a `NodeContext` (`build/project.py`) and runs `agents/pipeline.py`. Each node commits to the hash map as soon as it passes; a failing node is rolled back alone and its dependents are skipped.
 
-### Multi-Agent Pipeline (`agents/swarm.py`)
+### Per-node pipeline (`agents/pipeline.py`)
 
-Sequential stages with a parallel middle:
-1. **Architect** — plans file structure → `file_plan` JSON
-2. **Interface Planner** — defines signatures/types → `interface_spec` JSON
-3. **Implementation** + **Testing** (parallel) — generate code and test suite
-4. **Review** — validates output satisfies spec; on rejection, critique is fed back for up to `max_retries` (default 2) retries
+`plan` → (`implement` ‖ `test`) → checks → [`repair` → checks]* → `review`
 
-Two LLM backends are supported, chosen by `llm.py:detect_provider()` based on model name prefix:
-- **Gemini** (`gemini-*`): uses Google ADK (`SequentialAgent`, `ParallelAgent`, `InMemoryRunner`) — the pipeline is built as an ADK agent graph in `build_swarm()`.
-- **xAI/OpenAI-compatible** (`grok-*`, etc.): custom `ThreadPoolExecutor`-based sequential pipeline built in `build_pipeline()`, calling `generate_content()` directly. Context accumulates across stages.
-
-When building prompts (`_build_prompt()`), `depends_on` nodes contribute both their spec prose **and their already-generated code** as context, not just the spec text.
+- Stage calls live in `agents/stages.py`; every stage reply uses tagged blocks (`<code>`, `<test>`, `<interface>`, `<file path>`, `<unchanged/>`, `<delete/>`, `<verdict>`). Never route generated code through JSON.
+- Every prompt starts with `agents/context.py:render()`: project facts (language, output dir as import root, test/check commands), parent specs, dependency specs and code, files owned by other specs, this node's previous files, then the spec.
+- Checks (`build/checks.py`): path escape, ownership (other specs' files and untracked existing files are off limits), Python syntax, `check_command`, `test_command`. Failures feed `repair` with real output, up to `max_retries`.
+- `providers/` has one module per backend (`gemini`, `claude`, `openai_compat` for OpenAI/xAI), chosen by model-name prefix in `providers.detect_provider()`; unknown prefixes are an error.
+- Tests: `tests/fake_llm.py` replies per (spec, stage); the `fake_llm` fixture patches `specdiff.agents.stages.complete` so the real parsing, checks, writes and repair loop run.
 
 ### Skill Files
 
-Agent behavior is controlled by Markdown files in `.specdiff/skills/` (e.g., `architect.skill.md`). These are loaded by `skills.py` and injected as system prompts. `specdiff init` scaffolds six default skills: `spec-eval`, `architect`, `interface`, `implementation`, `testing`, `review`. Editing these files changes agent behavior without touching code.
+Built-in stage prompts live in `src/specdiff/default_skills/` (`plan`, `implement`, `test`, `repair`, `review`, `spec-eval`). A `.specdiff/skills/<name>.skill.md` file overrides one; `specdiff skill NAME` prints the effective version. Output formats are enforced in code, not skills. Skill files named after the old pipeline (`architect`, `interface`, `implementation`, `testing`) are ignored with a notice.
 
 ### Traceability & Safety
 
-- Every generated file receives a language-appropriate comment header with its source spec ID, hash, and timestamp (`runner.py:_traceability_header()`).
-- Every file a build will overwrite (generated or hand-written) is backed up to `.specdiff/.backup/` first and restored on failure or interrupt. A leftover `.backup/` means an earlier build died mid-run; `build` refuses to start until it is removed.
-- Agent-supplied paths go through `runner.py:resolve_output_path()`, which rejects anything outside `output_dir`.
+- Every generated file receives a language-appropriate comment header with its source spec ID, hash, and timestamp (`build/files.py:traceability_header()`; stripped again before files are shown to agents).
+- `build/files.py:NodeWriter` backs up each path the first time a node touches it and restores it if the node fails or the build is interrupted. A leftover `.specdiff/.backup/` means an earlier build died mid-run; `build` refuses to start until it is removed.
+- Agent-supplied paths go through `build/files.py:resolve_output_path()`, which rejects anything outside `output_dir`. Specdiff never overwrites a file it did not generate.
 - The `review` CLI command writes proposed spec revisions to `.specdiff/proposed/` without modifying originals.
 
 ### Configuration (`.specdiff/config.yaml`)
 
-Key fields: `model`, `output_dir`, `specs_dir`, `language`, `test_command`, `test_framework`, `review_before_build`, `max_retries`.
+Key fields: `model`, `output_dir`, `specs_dir`, `language`, `test_command`, `check_command`, `test_framework`, `review_before_build`, `max_retries` (repair attempts per node).
 
 Default model is `gemini-2.5-flash`.
 
@@ -76,8 +71,7 @@ Default model is `gemini-2.5-flash`.
 
 - `SpecNode` — id, version, status, hash, content, file_path, parent, depends_on, language
 - `SpecdiffConfig` — all config fields above
-- `SwarmResult` — file_plan, generated_files, generated_tests, review status
-- `HashMap` — node_id → `HashMapEntry` (spec_hash, generated_files, generated_at, output_hashes). `output_hashes` lets `hashmap.modified_files()` detect hand edits to generated output.
+- `HashMap` — node_id → `HashMapEntry` (spec_hash, generated_files, generated_at, output_hashes, inputs). `output_hashes` lets `hashmap.modified_files()` detect hand edits; `inputs` records what the build depended on (see `plan.py`).
 
 ### CLI Commands (`cli.py`)
 

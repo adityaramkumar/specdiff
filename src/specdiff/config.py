@@ -21,5 +21,6 @@ def load_config(specs_dir: Path) -> SpecdiffConfig:
         review_before_build=raw.get("review_before_build", False),
         language=raw.get("language", SpecdiffConfig.language),
         test_framework=raw.get("test_framework"),
+        check_command=raw.get("check_command"),
         max_retries=raw.get("max_retries", SpecdiffConfig.max_retries),
     )

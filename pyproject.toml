@@ -22,8 +22,8 @@ classifiers = [
 dependencies = [
     "click",
     "python-frontmatter",
+    "anthropic>=1.0",
     "google-genai",
-    "google-adk",
     "openai",
     "python-dotenv",
     "pyyaml",
@@ -42,6 +42,9 @@ specdiff = "specdiff.cli:cli"
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.setuptools.package-data]
+specdiff = ["default_skills/*.md"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

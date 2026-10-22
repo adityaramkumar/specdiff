@@ -67,6 +67,9 @@ class SpecdiffConfig:
     review_before_build: bool = False
     language: str = "python"
     test_framework: str | None = None
+    # Command that must pass besides the tests, e.g. a typechecker.
+    check_command: str | None = None
+    # Repair attempts per node after a failed check.
     max_retries: int = 2
 
     def __post_init__(self) -> None:
@@ -83,17 +86,3 @@ class ReviewResult:
     passed: bool
     feedback: str
     proposed_revision: str | None = None
-
-
-@dataclass
-class FilePlan:
-    files: dict[str, str] = field(default_factory=dict)
-
-
-@dataclass
-class SwarmResult:
-    file_plan: FilePlan
-    generated_files: dict[str, str] = field(default_factory=dict)
-    generated_tests: dict[str, str] = field(default_factory=dict)
-    review_passed: bool = True
-    review_feedback: str = ""

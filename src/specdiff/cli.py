@@ -9,12 +9,12 @@ from dotenv import load_dotenv
 
 from specdiff import hashmap
 from specdiff.agents.spec_agent import review_spec
+from specdiff.build.runner import execute_build
 from specdiff.config import load_config
 from specdiff.graph import SpecGraph, build_graph, impact_summary
 from specdiff.parser import discover_specs
 from specdiff.plan import NodeState, compute_states, plan_build, skills_hash
-from specdiff.runner import execute_swarm_cascade
-from specdiff.skills import load_skill
+from specdiff.skills import legacy_skill_files, load_skill
 from specdiff.types import HashMap, SpecdiffConfig
 
 SPEC_EVAL_SKILL = "spec-eval"
@@ -64,7 +64,7 @@ def cli() -> None:
 
 @cli.command()
 @click.argument("node_id", required=False)
-@click.option("--no-review", is_flag=True, help="Skip the review gate")
+@click.option("--no-review", is_flag=True, help="Skip the LLM review stage")
 @click.option(
     "--dry-run",
     is_flag=True,
@@ -118,23 +118,33 @@ def build(node_id: str | None, no_review: bool, dry_run: bool, force: bool) -> N
                     f"Spec '{node.id}' failed review. Run `specdiff review` to see suggestions."
                 )
 
-    click.echo(f"Building {len(ordered_nodes)} node(s)...\n")
+    for path in legacy_skill_files(specs_dir):
+        click.echo(
+            f"  Note: {path} is no longer used. Build skills are now plan, implement, test, "
+            "repair and review; see `specdiff init` for how to override them.",
+            err=True,
+        )
 
-    ok = execute_swarm_cascade(
+    click.echo(f"Building {len(ordered_nodes)} node(s)...\n")
+    report = execute_build(
         ordered_nodes,
         config,
         hm,
         graph,
         specs_dir,
-        skip_review=no_review,
+        review=not no_review,
         force=force,
         inputs={nid: states[nid].inputs for nid in plan.order},
     )
 
-    if not ok:
+    u = report.usage
+    click.echo(
+        f"\nBuilt {len(report.built)}, failed {len(report.failed)}, skipped "
+        f"{len(report.skipped)}. {u.calls} LLM call(s), {u.input_tokens:,} in / "
+        f"{u.output_tokens:,} out tokens."
+    )
+    if not report.ok:
         sys.exit(1)
-    hashmap.save(specs_dir, hm)
-    click.echo("\nBuild complete.")
 
 
 @cli.command()
@@ -324,164 +334,41 @@ def ui(port: int, no_browser: bool) -> None:
     serve_ui(specs_dir, port=port, open_browser=not no_browser)
 
 
-@cli.command()
-def init() -> None:
-    """Initialize a .specdiff directory with a default config."""
-    specs_dir = Path(".specdiff")
-    if specs_dir.exists():
-        click.echo(f"Directory {specs_dir} already exists.")
-        return
-
-    specs_dir.mkdir()
-    (specs_dir / "skills").mkdir()
-
-    config_yaml = """model: gemini-2.5-flash
-# For xAI: model: grok-4-1-fast-non-reasoning
+INIT_CONFIG = """\
+# Model prefixes: gemini-* (GEMINI_API_KEY), claude-* (ANTHROPIC_API_KEY),
+# gpt-*/o* (OPENAI_API_KEY), grok-* (XAI_API_KEY).
+model: gemini-2.5-flash
 output_dir: src
 specs_dir: .specdiff
 language: python
+test_framework: pytest
+# Run after every spec is generated; failures are fed back to the repair stage.
+test_command: PYTHONPATH=src python -m pytest -q src
+# Optional extra check, e.g. a typechecker: check_command: npx tsc --noEmit
 review_before_build: false
+# Repair attempts per spec when a check fails.
 max_retries: 2
 """
-    (specs_dir / "config.yaml").write_text(config_yaml)
 
-    skills = {
-        SPEC_EVAL_SKILL: """\
-You are a spec quality reviewer. Assess whether the spec is precise enough to
-generate correct, unambiguous code from it without additional human input.
+SKILLS_README = """\
+# Skills
 
-Return a JSON object:
-  {"passed": true/false, "feedback": "...", "proposed_revision": "..." or null}
+Each build stage runs with a built-in prompt ("skill"): plan, implement, test,
+repair, review, plus spec-eval for `specdiff review`.
 
-- passed: true only if the spec is fully self-contained and unambiguous.
-- feedback: what is clear, and what (if anything) is vague or missing.
-- proposed_revision: if passed is false, a revised markdown spec body that
-  fixes all identified issues; otherwise null.
+To customise one, print the built-in version into this folder and edit it:
 
-A spec FAILS if any of the following are true:
-- An error response specifies an HTTP status code but not the response body field
-  names (e.g., "return 422" fails; "return 422 with {error: 'password_too_weak'}" passes)
-- Counting terms like "N rows" or "N items" are used without specifying whether the
-  count includes headers, empty entries, or deleted records
-- A validation rule combines conditions with "and" without listing every condition
-  explicitly (e.g., "strong password" fails; ">= 12 chars, >= 1 uppercase, >= 1 digit,
-  >= 1 special character" passes)
-""",
-        "architect": """\
-You are the Architect agent. Analyse the spec and produce the file layout for
-the implementation.
+    specdiff skill implement > .specdiff/skills/implement.skill.md
 
-Output ONLY a valid JSON object mapping each relative file path to a one-line
-description of that file's responsibility. No prose, no markdown fences.
+A file here replaces the built-in skill. Changing a build skill marks every spec
+stale, since it changes what the generated code would be.
+"""
 
-Example:
-{"auth/login.py": "Handles user login and returns a session token."}
-
-Rules:
-- Use the language and conventions stated in the prompt (.py, .ts, .go, etc.).
-- Only include files strictly required by the spec.
-- Keep paths relative to the output_dir (do not include the output_dir prefix).
-- If the spec describes state that persists across requests (a user store, a session
-  store, a todo list, an event queue), include a dedicated module for it in the file
-  plan. Request handlers must delegate to it -- never let mutable state live as a
-  literal constant inside a handler function.
-""",
-        "interface": """\
-You are the Interface Planner agent. Given the spec and the architect's file
-plan, define the precise public interface each file will expose.
-
-Output ONLY a valid JSON object mapping each file path to its complete interface
-definition as a string — function signatures, type annotations, class skeletons,
-and module exports. No implementations. No prose outside the JSON.
-
-Example:
-{"auth/login.py": "def login(username: str, password: str) -> dict[str, str]: ..."}
-
-Rules:
-- Match the language and test framework stated in the prompt.
-- Be exact: the Implementation agent will be held to these signatures.
-- If dependency implementations are provided in the prompt, match their API exactly.
-- For every function that can fail, include the exact error string in the docstring/JSDoc,
-  not just the exception type. E.g.: 'Raises ValueError("duplicate column: {name}")'
-  The testing agent uses these exact strings to write assertions.
-- For store or repository modules, define the full CRUD surface: add, find-by-key,
-  update, remove, and what happens on not-found (return None or raise KeyError, etc.).
-""",
-        "implementation": """\
-You are the Implementation agent. Given the spec, file plan, and interface
-definitions, write the complete, working implementation for every file.
-
-Output ONLY a valid JSON object mapping each file path to its complete file
-contents as a string. No prose, no markdown fences around the JSON itself.
-
-Rules:
-- Satisfy EVERY requirement stated in the spec.
-- Follow the exact signatures from the interface spec.
-- Do NOT include any tests — only implementation code.
-- If dependency implementations are provided, use their actual API exactly.
-- If a review critique is provided, fix every issue it identifies.
-- Never hardcode test or example data as production logic. An in-memory store
-  means a real mutable collection (list, dict, Map) at module level -- never a
-  literal like ['test@example.com'] or a check like 'if email == "admin@example.com"'.
-- For TypeScript: import from real npm packages only (express, jsonwebtoken, bcrypt,
-  uuid, etc.) -- never placeholder names like 'some-http-framework'.
-- Every import you use must appear at the top of the file. Review each file before
-  returning it; a missing import is a runtime error.
-- If the spec lists multi-condition validation (e.g., password length + character
-  classes), implement every condition -- never simplify to a single check.
-""",
-        "testing": """\
-You are the Testing agent. The generated implementation code from the previous
-stage is in your context (labelled generated_code). Read it before writing a
-single test to find the exact module paths, function names, and return shapes.
-
-Output ONLY a valid JSON object mapping each test file path to its complete
-contents as a string. Return an empty object {} if no tests are appropriate.
-
-Rules:
-- Cover the happy path, all error cases, and edge cases stated in the spec.
-- Import from the exact module paths present in the generated implementation.
-- Use the test framework stated in the prompt; default to pytest (Python) or
-  vitest (TypeScript) if none is specified.
-- Test file naming: tests/test_<module>.py (Python) or <module>.test.ts (TS).
-- Python: serialize test data with json.dumps(), never str(). Python's str() on
-  a dict produces single-quoted output that json.loads() will reject.
-- Python: pytest fixtures cannot accept inline call arguments. Use factory
-  fixtures (return a callable) or plain helper functions instead.
-- When asserting a JSON-encoded string, compute the expected value with
-  json.dumps(expected, ...) using the same parameters as the implementation.
-""",
-        "review": """\
-You are the Review agent. Determine whether the generated implementation
-faithfully satisfies every requirement in the spec.
-
-Output ONLY a valid JSON object:
-  {"passed": true/false, "feedback": "..."}
-
-- passed: true only if ALL spec requirements are correctly implemented.
-- feedback: summarise what was verified; if failed, list each missing or
-  incorrect requirement with a specific, actionable description of the fix needed.
-
-Be strict. A partial implementation must return passed: false.
-Additional failure conditions (always return passed: false if any of these apply):
-- Any file imports from a placeholder package name (e.g., 'some-http-framework').
-- Credentials, emails, or example data appear as hardcoded literals in production
-  logic (e.g., checking email === 'test@example.com' instead of querying a store).
-- A symbol is used in a file but its import is absent from that file.
-- A multi-condition validation rule is only partially implemented.
-""",
-    }
-
-    skills_dir = specs_dir / "skills"
-    for name, content in skills.items():
-        (skills_dir / f"{name}.skill.md").write_text(content)
-
-    example_spec = """\
+EXAMPLE_SPEC = """\
 ---
 id: behaviors/hello
 version: "1.0.0"
 status: approved
-depends_on: []
 ---
 
 ## Hello World
@@ -490,21 +377,37 @@ Replace this with your first real spec.
 
 ### Acceptance Criteria
 
-- Given a name, the system returns "Hello, <name>!"
-- If name is empty or not provided, defaults to "Hello, World!"
+- `greet(name)` returns "Hello, <name>!"
+- If name is empty or only whitespace, it returns "Hello, World!"
 - Name is stripped of leading and trailing whitespace before use
 """
-    behaviors_dir = specs_dir / "behaviors"
-    behaviors_dir.mkdir()
-    (behaviors_dir / "hello.spec.md").write_text(example_spec)
 
-    click.echo("Initialized .specdiff/ with config, skill files, and an example spec.\n")
-    click.echo("Next steps:")
-    click.echo("  1. Set your API key:  export GEMINI_API_KEY=your-key-here")
-    click.echo("  2. Edit .specdiff/behaviors/hello.spec.md with your first spec")
-    click.echo("  3. Run `specdiff review behaviors/hello` to validate it")
-    click.echo("  4. Run `specdiff build` to generate code")
-    click.echo("  5. Run `specdiff ui` to explore your spec graph")
+
+@cli.command()
+def init() -> None:
+    """Initialize a .specdiff directory with a config and an example spec."""
+    specs_dir = Path(".specdiff")
+    if specs_dir.exists():
+        click.echo(f"Directory {specs_dir} already exists.")
+        return
+
+    (specs_dir / "skills").mkdir(parents=True)
+    (specs_dir / "behaviors").mkdir()
+    (specs_dir / "config.yaml").write_text(INIT_CONFIG)
+    (specs_dir / "skills" / "README.md").write_text(SKILLS_README)
+    (specs_dir / "behaviors" / "hello.spec.md").write_text(EXAMPLE_SPEC)
+    click.echo("Created .specdiff/ with config.yaml and behaviors/hello.spec.md.")
+    click.echo("Set your model's API key, then run `specdiff build`.")
+
+
+@cli.command()
+@click.argument("name")
+def skill(name: str) -> None:
+    """Print the skill NAME as the build uses it (your override or the built-in)."""
+    try:
+        click.echo(load_skill(Path(load_config(Path(".specdiff")).specs_dir), name), nl=False)
+    except FileNotFoundError as exc:
+        raise click.ClickException(str(exc)) from exc
 
 
 @cli.command()

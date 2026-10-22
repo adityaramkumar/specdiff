@@ -6,11 +6,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from specdiff.graph import SpecGraph, prerequisites, topo_sort, upstream
-from specdiff.skills import discover_skills
+from specdiff.skills import load_build_skills
 from specdiff.types import HashMap, SpecdiffConfig
-
-# Skills that only run outside the build (spec review) don't affect generated code.
-NON_BUILD_SKILLS = {"spec-eval"}
 
 
 @dataclass
@@ -32,8 +29,8 @@ class NodeState:
 
 
 def skills_hash(specs_dir: Path) -> str:
-    skills = {k: v for k, v in discover_skills(specs_dir).items() if k not in NON_BUILD_SKILLS}
-    return _digest(skills)
+    """Hash of the effective build skills, built-in defaults included."""
+    return _digest(load_build_skills(specs_dir))
 
 
 def compute_states(
