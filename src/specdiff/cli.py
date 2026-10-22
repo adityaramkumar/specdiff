@@ -5,35 +5,34 @@ from pathlib import Path
 
 import click
 import frontmatter
-import yaml
 from dotenv import load_dotenv
 
 from specdiff import hashmap
 from specdiff.agents.spec_agent import review_spec
-from specdiff.graph import build_graph, cascade, impact_summary
+from specdiff.config import load_config
+from specdiff.graph import SpecGraph, build_graph, impact_summary
 from specdiff.parser import discover_specs
+from specdiff.plan import NodeState, compute_states, plan_build, skills_hash
 from specdiff.runner import execute_swarm_cascade
 from specdiff.skills import load_skill
-from specdiff.types import SpecdiffConfig
+from specdiff.types import HashMap, SpecdiffConfig
 
 SPEC_EVAL_SKILL = "spec-eval"
 
 
-def _load_config(specs_dir: Path) -> SpecdiffConfig:
-    config_path = specs_dir / "config.yaml"
-    if not config_path.exists():
-        return SpecdiffConfig()
-    raw = yaml.safe_load(config_path.read_text("utf-8")) or {}
-    return SpecdiffConfig(
-        model=raw.get("model", SpecdiffConfig.model),
-        test_command=raw.get("test_command"),
-        output_dir=raw.get("output_dir", SpecdiffConfig.output_dir),
-        specs_dir=raw.get("specs_dir", SpecdiffConfig.specs_dir),
-        review_before_build=raw.get("review_before_build", False),
-        language=raw.get("language", SpecdiffConfig.language),
-        test_framework=raw.get("test_framework"),
-        max_retries=raw.get("max_retries", SpecdiffConfig.max_retries),
-    )
+def _load_graph(nodes) -> SpecGraph:
+    try:
+        return build_graph(nodes)
+    except ValueError as exc:
+        raise click.ClickException(f"{exc}\nRun `specdiff validate` to see every problem.") from exc
+
+
+def _load_states(
+    config: SpecdiffConfig, specs_dir: Path, nodes
+) -> tuple[SpecGraph, HashMap, dict[str, NodeState]]:
+    graph = _load_graph(nodes)
+    hm = hashmap.load(specs_dir)
+    return graph, hm, compute_states(graph, hm, config, skills_hash(specs_dir))
 
 
 def _update_spec_status(file_path: str, new_status: str) -> None:
@@ -73,58 +72,35 @@ def cli() -> None:
 )
 @click.option("--force", is_flag=True, help="Overwrite generated files that were edited by hand")
 def build(node_id: str | None, no_review: bool, dry_run: bool, force: bool) -> None:
-    """Generate code from specs. Optionally target a single NODE_ID."""
-    config = _load_config(Path(".specdiff"))
+    """Generate code for stale specs. With NODE_ID, build it and what it needs."""
+    config = load_config(Path(".specdiff"))
     specs_dir = Path(config.specs_dir)
-    hm = hashmap.load(specs_dir)
 
     nodes = discover_specs(specs_dir)
     if not nodes:
         click.echo("No spec files found.")
         return
 
-    graph = build_graph(nodes)
+    graph, hm, states = _load_states(config, specs_dir, nodes)
+    if node_id and node_id not in graph.nodes:
+        raise click.ClickException(f"Spec node '{node_id}' not found.")
 
-    stale_ids = {n.id for n in nodes if hashmap.is_stale(hm, n.id, n.hash)}
+    plan = plan_build(graph, states, node_id)
+    for nid, why in plan.blocked.items():
+        click.echo(f"  Skipping {nid} ({why})", err=True)
 
-    if node_id:
-        if node_id not in graph.nodes:
-            raise click.ClickException(f"Spec node '{node_id}' not found.")
-        target = graph.nodes[node_id]
-        # A targeted node must rebuild if it or any of its direct dependencies
-        # are stale, even if its own hash hasn't changed.
-        dep_stale = any(d in stale_ids for d in target.depends_on)
-        if target.id in stale_ids or dep_stale:
-            stale_ids.add(target.id)
-        stale = [target] if target.id in stale_ids else []
-    else:
-        stale = [n for n in nodes if n.id in stale_ids]
-
-    if not stale:
-        click.echo("Everything is up to date.")
+    if not plan.order:
+        click.echo("Nothing to build." if plan.blocked else "Everything is up to date.")
         return
 
-    ordered_ids = cascade(graph, [n.id for n in stale], stale_ids=stale_ids)
-    ordered_nodes = [graph.nodes[nid] for nid in ordered_ids]
+    ordered_nodes = [graph.nodes[nid] for nid in plan.order]
 
     if dry_run:
         click.echo(f"Would build {len(ordered_nodes)} node(s) in this order:\n")
-        for i, node in enumerate(ordered_nodes, 1):
-            reason = "stale" if node.id in stale_ids else "cascade"
-            deps_str = ""
-            if node.depends_on:
-                deps_str = f", depends on {', '.join(node.depends_on)}"
-            click.echo(f"  {i}. {node.id}  [{reason}{deps_str}]")
+        for i, nid in enumerate(plan.order, 1):
+            why = ", ".join(states[nid].reasons) or "new"
+            click.echo(f"  {i}. {nid}  [{why}]")
         return
-
-    for node in ordered_nodes:
-        for dep_id in node.depends_on:
-            if dep_id not in graph.nodes:
-                click.echo(
-                    f"  Warning: '{node.id}' depends on '{dep_id}' which was not found.\n"
-                    f"  Create '.specdiff/{dep_id}.spec.md' to provide dependency context.",
-                    err=True,
-                )
 
     if config.review_before_build:
         try:
@@ -145,7 +121,14 @@ def build(node_id: str | None, no_review: bool, dry_run: bool, force: bool) -> N
     click.echo(f"Building {len(ordered_nodes)} node(s)...\n")
 
     ok = execute_swarm_cascade(
-        ordered_nodes, config, hm, graph, specs_dir, skip_review=no_review, force=force
+        ordered_nodes,
+        config,
+        hm,
+        graph,
+        specs_dir,
+        skip_review=no_review,
+        force=force,
+        inputs={nid: states[nid].inputs for nid in plan.order},
     )
 
     if not ok:
@@ -156,28 +139,25 @@ def build(node_id: str | None, no_review: bool, dry_run: bool, force: bool) -> N
 
 @cli.command()
 def status() -> None:
-    """Show staleness status for all spec nodes."""
-    config = _load_config(Path(".specdiff"))
+    """Show which specs are current, stale, or new, and why."""
+    config = load_config(Path(".specdiff"))
     specs_dir = Path(config.specs_dir)
-    hm = hashmap.load(specs_dir)
 
     nodes = discover_specs(specs_dir)
     if not nodes:
         click.echo("No spec files found.")
         return
 
-    click.echo(f"{'Node ID':<35} {'Status':<10} {'Version'}")
-    click.echo("-" * 60)
+    graph, hm, states = _load_states(config, specs_dir, nodes)
 
+    click.echo(f"{'Node ID':<35} {'Status':<10} {'Version':<10} Why")
+    click.echo("-" * 80)
     for node in nodes:
-        entry = hm.nodes.get(node.id)
-        if entry is None:
-            label = "new"
-        elif entry.spec_hash != node.hash:
-            label = "stale"
-        else:
-            label = "current"
-        click.echo(f"{node.id:<35} {label:<10} {node.version}")
+        state = states[node.id]
+        why = ", ".join(state.reasons)
+        if node.status == "draft":
+            why = f"draft; {why}" if why else "draft"
+        click.echo(f"{node.id:<35} {state.label:<10} {node.version:<10} {why}".rstrip())
 
     edited = [f for e in hm.nodes.values() for f in hashmap.modified_files(e)]
     if edited:
@@ -194,7 +174,7 @@ def validate() -> None:
     are no duplicate node IDs, and that no circular dependencies exist.
     Exits with code 1 if any errors are found.
     """
-    config = _load_config(Path(".specdiff"))
+    config = load_config(Path(".specdiff"))
     specs_dir = Path(config.specs_dir)
 
     nodes = discover_specs(specs_dir)
@@ -223,8 +203,7 @@ def validate() -> None:
 
     if not errors:
         try:
-            graph = build_graph(nodes)
-            cascade(graph, list(node_map.keys()))
+            build_graph(nodes)
         except ValueError as exc:
             errors.append(f"  {exc}")
 
@@ -240,48 +219,49 @@ def validate() -> None:
 @cli.command()
 @click.argument("node_id", required=False)
 def impact(node_id: str | None) -> None:
-    """Show the blast radius of pending spec changes."""
-    config = _load_config(Path(".specdiff"))
+    """Show what a build would touch.
+
+    With NODE_ID, show every spec downstream of it: the blast radius of changing it.
+    """
+    config = load_config(Path(".specdiff"))
     specs_dir = Path(config.specs_dir)
-    hm = hashmap.load(specs_dir)
 
     nodes = discover_specs(specs_dir)
     if not nodes:
         click.echo("No spec files found.")
         return
 
-    graph = build_graph(nodes)
+    graph, _, states = _load_states(config, specs_dir, nodes)
 
-    stale = [n for n in nodes if hashmap.is_stale(hm, n.id, n.hash)]
+    if node_id:
+        if node_id not in graph.nodes:
+            raise click.ClickException(f"Spec node '{node_id}' not found.")
+        summary = impact_summary(graph, [node_id])
+        if not summary["downstream"]:
+            click.echo(f"Nothing depends on {node_id}.")
+            return
+        click.echo(f"Changing {node_id} rebuilds:")
+        for nid, depth in summary["downstream"].items():
+            click.echo(f"  {nid:<35} (cascade depth {depth})")
+        click.echo(f"\nTotal: {summary['total']} node(s)")
+        return
+
+    stale = [nid for nid in plan_build(graph, states).order]
     if not stale:
         click.echo("Everything is up to date. No impact.")
         return
-
-    if node_id:
-        stale = [n for n in stale if n.id == node_id]
-        if not stale:
-            click.echo(f"Node '{node_id}' is not stale.")
-            return
-
-    summary = impact_summary(graph, [n.id for n in stale])
-
-    click.echo("Stale spec nodes:")
-    for nid in summary["changed"]:
-        click.echo(f"  {nid}")
-
-    if summary["downstream"]:
-        click.echo("\nDownstream nodes affected:")
-        for nid, depth in summary["downstream"].items():
-            click.echo(f"  {nid:<35} (cascade depth {depth})")
-
-    click.echo(f"\nTotal: {summary['total']} node(s) will be rebuilt")
+    click.echo("Stale spec nodes, in build order:")
+    for nid in stale:
+        why = ", ".join(states[nid].reasons) or "new"
+        click.echo(f"  {nid:<35} {why}")
+    click.echo(f"\nTotal: {len(stale)} node(s) will be rebuilt")
 
 
 @cli.command()
 @click.argument("node_id", required=False)
 def review(node_id: str | None) -> None:
     """Review specs for quality. Optionally target a single NODE_ID."""
-    config = _load_config(Path(".specdiff"))
+    config = load_config(Path(".specdiff"))
     specs_dir = Path(config.specs_dir)
 
     nodes = discover_specs(specs_dir)
@@ -335,7 +315,7 @@ def review(node_id: str | None) -> None:
 @click.option("--no-browser", is_flag=True, help="Don't open the browser automatically")
 def ui(port: int, no_browser: bool) -> None:
     """Launch the interactive graphical UI in your browser."""
-    config = _load_config(Path(".specdiff"))
+    config = load_config(Path(".specdiff"))
     specs_dir = Path(config.specs_dir)
 
     # We delay this import to avoid circular dependency if `api` imports from `cli`
@@ -500,7 +480,6 @@ Additional failure conditions (always return passed: false if any of these apply
 ---
 id: behaviors/hello
 version: "1.0.0"
-parent: behaviors
 status: approved
 depends_on: []
 ---
@@ -536,7 +515,7 @@ def clean(node_id: str | None, yes: bool) -> None:
 
     Forces a full rebuild of NODE_ID (or all nodes) on the next build.
     """
-    config = _load_config(Path(".specdiff"))
+    config = load_config(Path(".specdiff"))
     specs_dir = Path(config.specs_dir)
     hm = hashmap.load(specs_dir)
 
@@ -582,7 +561,7 @@ def clean(node_id: str | None, yes: bool) -> None:
 @click.option("--granularity", default="auto", help="Extraction granularity ('auto' or 'file')")
 def extract(source: str, granularity: str) -> None:
     """Read existing code and generate spec files."""
-    config = _load_config(Path(".specdiff"))
+    config = load_config(Path(".specdiff"))
     specs_dir = Path(config.specs_dir)
 
     if not specs_dir.exists():

@@ -36,8 +36,8 @@ Specdiff is a spec-driven code generation framework: `.spec.md` files are the so
 ### Core Data Flow
 
 1. **Parse** — `parser.py` reads `.spec.md` files (YAML frontmatter + body), computes SHA-256 hashes. The hash payload excludes the `status` and `hash` frontmatter fields so editorial-only changes don't trigger rebuilds.
-2. **Graph** — `graph.py` builds a directed graph from `parent` (hierarchy) and `depends_on` (cross-branch) fields; topological sort determines build order; cascade walk finds downstream impact.
-3. **Hash check** — `hashmap.py` compares current spec hashes against `.specdiff/hash-map.json` to determine which nodes are stale. Writes are atomic (`.tmp` then `os.replace`).
+2. **Graph** — `graph.py` builds a directed graph where both `depends_on` and `parent` are prerequisite edges; it rejects duplicate IDs, dangling references and cycles. Parent spec text is passed to agents root-first ahead of the node's own spec.
+3. **Plan** — `plan.py` fingerprints each node from its spec hash, its dependencies' and parent's fingerprints, the build skills, and model/language/test settings. Diffing against the `inputs` recorded in `.specdiff/hash-map.json` gives staleness *with reasons* ("contracts/users changed", "skills changed"); changes propagate downstream through fingerprints, so there is no separate cascade step. `plan_build()` orders stale nodes prerequisites-first and skips stale `draft` specs plus anything downstream of them. Hash-map writes are atomic (`.tmp` then `os.replace`).
 4. **Run** — `runner.py` orchestrates: backup existing files to `.specdiff/.backup/` → run baseline tests → invoke swarm → run tests again → rollback on failure.
 5. **Swarm** — `agents/swarm.py` runs a multi-agent pipeline that produces code.
 
@@ -81,10 +81,10 @@ Default model is `gemini-2.5-flash`.
 
 ### CLI Commands (`cli.py`)
 
-- `build [node_id]` — generate code from specs; `--no-review` skips review stage; `--dry-run` previews stale nodes without invoking LLM; `--force` overwrites generated files edited by hand
-- `status` — show staleness per node (new/stale/current)
+- `build [node_id]` — generate code for stale specs (with `node_id`: that node plus its stale prerequisites); `--no-review` skips review stage; `--dry-run` previews stale nodes without invoking LLM; `--force` overwrites generated files edited by hand
+- `status` — show staleness per node (new/stale/current) and why
 - `validate` — check graph integrity (no orphaned depends_on, no circular dependencies)
-- `impact [node_id]` — preview cascade blast radius without API calls
+- `impact [node_id]` — list stale nodes in build order, or with `node_id` everything downstream of it
 - `review [node_id]` — run Spec Agent and write proposed revisions to `.specdiff/proposed/`
 - `clean [node_id]` — delete generated files and hash map entries, forcing a full rebuild
 - `ui [--port] [--no-browser]` — launch React+Vite graph visualization via `api.py`

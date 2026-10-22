@@ -345,7 +345,7 @@ class TestBuildDryRun:
         assert "Would build 2 node(s)" in result.output
         assert "contracts/api/users" in result.output
         assert "behaviors/auth/login" in result.output
-        assert "stale" in result.output
+        assert "[new]" in result.output
         hm_path = proj / ".specdiff" / "hash-map.json"
         assert not hm_path.exists()
 
@@ -374,8 +374,7 @@ class TestBuildDryRun:
 
         assert result.exit_code == 0, result.output
         assert "contracts/api/users" in result.output
-        assert "behaviors/auth/login" in result.output
-        assert "cascade" in result.output
+        assert "behaviors/auth/login  [contracts/api/users changed]" in result.output
 
     def test_dry_run_up_to_date_exits_cleanly(self, tmp_path):
         proj = _setup_project(
@@ -435,8 +434,7 @@ class TestImpact:
         assert result.exit_code == 0
         assert "contracts/schema" in result.output
 
-    def test_impact_node_not_stale(self, tmp_path):
-        """When the targeted node is not stale, impact reports no changes needed."""
+    def test_impact_leaf_node_has_no_blast_radius(self, tmp_path):
         proj = _setup_project(
             tmp_path,
             [{"path": "behaviors/login.spec.md", "id": "auth/login"}],
@@ -452,7 +450,7 @@ class TestImpact:
             os.chdir(proj)
             result = runner.invoke(cli, ["impact", "auth/login"], catch_exceptions=False)
         assert result.exit_code == 0
-        assert "up to date" in result.output or "not stale" in result.output
+        assert "Nothing depends on auth/login" in result.output
 
     def test_shows_cascade(self, tmp_path):
         proj = _setup_project(
@@ -960,3 +958,76 @@ class TestHandEdits:
             forced = CliRunner().invoke(cli, ["build", "--force"], catch_exceptions=False)
         assert forced.exit_code == 0, forced.output
         assert "# generated from auth/login" in generated.read_text()
+
+
+class TestStalenessReporting:
+    def test_init_project_builds_out_of_the_box(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        runner = CliRunner()
+        assert runner.invoke(cli, ["init"], catch_exceptions=False).exit_code == 0
+        result = runner.invoke(cli, ["build", "--dry-run"], catch_exceptions=False)
+        assert result.exit_code == 0, result.output
+        assert "behaviors/hello  [new]" in result.output
+
+    def test_graph_error_is_a_clean_cli_error(self, tmp_path, monkeypatch):
+        proj = _setup_project(
+            tmp_path, [{"path": "a.spec.md", "id": "a", "depends_on": ["missing"]}]
+        )
+        monkeypatch.chdir(proj)
+        result = CliRunner().invoke(cli, ["build"])
+        assert result.exit_code == 1
+        assert "a depends on missing" in result.output
+        assert "Traceback" not in result.output
+
+    def test_status_explains_downstream_staleness(self, tmp_path, monkeypatch):
+        proj = _setup_project(
+            tmp_path,
+            [
+                {"path": "contracts/users.spec.md", "id": "contracts/users"},
+                {
+                    "path": "behaviors/login.spec.md",
+                    "id": "behaviors/login",
+                    "depends_on": ["contracts/users"],
+                },
+            ],
+        )
+        monkeypatch.chdir(proj)
+        with patch("specdiff.runner.run_swarm", side_effect=_mock_swarm_result):
+            assert CliRunner().invoke(cli, ["build"], catch_exceptions=False).exit_code == 0
+
+        contract = proj / ".specdiff" / "contracts" / "users.spec.md"
+        contract.write_text(contract.read_text() + "\nNew field: email.\n")
+        result = CliRunner().invoke(cli, ["status"], catch_exceptions=False)
+
+        lines = {line.split()[0]: line for line in result.output.splitlines()[2:]}
+        assert "spec changed" in lines["contracts/users"]
+        assert "contracts/users changed" in lines["behaviors/login"]
+
+    def test_skill_change_marks_everything_stale(self, tmp_path, monkeypatch):
+        proj = _setup_project(tmp_path, [{"path": "a.spec.md", "id": "a"}])
+        monkeypatch.chdir(proj)
+        with patch("specdiff.runner.run_swarm", side_effect=_mock_swarm_result):
+            CliRunner().invoke(cli, ["build"], catch_exceptions=False)
+        (proj / ".specdiff" / "skills" / "implementation.skill.md").write_text("New rules")
+
+        result = CliRunner().invoke(cli, ["status"], catch_exceptions=False)
+        assert "skills changed" in result.output
+
+    def test_build_skips_drafts_and_their_dependents(self, tmp_path, monkeypatch):
+        proj = _setup_project(
+            tmp_path,
+            [
+                {"path": "a.spec.md", "id": "a"},
+                {"path": "b.spec.md", "id": "b", "depends_on": ["a"]},
+                {"path": "c.spec.md", "id": "c"},
+            ],
+        )
+        _write_spec(proj / ".specdiff", "a.spec.md", "a", status="draft")
+        monkeypatch.chdir(proj)
+        with patch("specdiff.runner.run_swarm", side_effect=_mock_swarm_result) as swarm:
+            result = CliRunner().invoke(cli, ["build"], catch_exceptions=False)
+
+        assert result.exit_code == 0, result.output
+        assert [c.args[0].id for c in swarm.call_args_list] == ["c"]
+        assert "Skipping a (draft)" in result.output
+        assert "Skipping b (waits on a)" in result.output

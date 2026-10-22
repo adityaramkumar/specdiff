@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from specdiff.graph import build_graph, cascade, impact_summary, topo_sort
+from specdiff.graph import ancestors, build_graph, impact_summary, topo_sort, upstream
 from specdiff.types import SpecNode
 
 
@@ -107,10 +107,9 @@ class TestTopoSort:
         a = _make_node("a", depends_on=["c"])
         b = _make_node("b", depends_on=["a"])
         c = _make_node("c", depends_on=["b"])
-        graph = build_graph([a, b, c])
 
         with pytest.raises(ValueError, match="Circular dependency"):
-            topo_sort(graph, ["a", "b", "c"])
+            build_graph([a, b, c])
 
     def test_subset_of_nodes(self):
         a = _make_node("a")
@@ -122,53 +121,46 @@ class TestTopoSort:
         assert result == ["a", "b"]
 
 
-class TestCascade:
-    def test_single_change_cascades_down(self):
-        a = _make_node("a")
-        b = _make_node("b", depends_on=["a"])
-        c = _make_node("c", depends_on=["b"])
-        graph = build_graph([a, b, c])
+class TestParentEdges:
+    def test_parent_is_a_prerequisite(self):
+        root = _make_node("root")
+        child = _make_node("child", parent="root")
+        graph = build_graph([child, root])
 
-        result = cascade(graph, ["a"])
-        assert set(result) == {"a", "b", "c"}
-        assert result.index("a") < result.index("b") < result.index("c")
+        assert graph.dependents["root"] == ["child"]
+        assert topo_sort(graph, ["child", "root"]) == ["root", "child"]
 
-    def test_leaf_change_no_downstream(self):
-        a = _make_node("a")
-        b = _make_node("b", depends_on=["a"])
-        graph = build_graph([a, b])
+    def test_parent_cycle_detected(self):
+        a = _make_node("a", parent="b")
+        b = _make_node("b", parent="a")
+        with pytest.raises(ValueError, match="Circular"):
+            build_graph([a, b])
 
-        result = cascade(graph, ["b"])
-        assert result == ["b"]
+    def test_duplicate_id_rejected(self):
+        with pytest.raises(ValueError, match="Duplicate spec ID 'a'"):
+            build_graph([_make_node("a"), _make_node("a")])
 
-    def test_multiple_roots(self):
-        a = _make_node("a")
-        b = _make_node("b", depends_on=["a"])
-        c = _make_node("c")
-        d = _make_node("d", depends_on=["c"])
-        graph = build_graph([a, b, c, d])
+    def test_ancestors_root_first(self):
+        graph = build_graph(
+            [_make_node("root"), _make_node("mid", parent="root"), _make_node("leaf", parent="mid")]
+        )
+        assert [n.id for n in ancestors(graph, "leaf")] == ["root", "mid"]
+        assert ancestors(graph, "root") == []
 
-        result = cascade(graph, ["a", "c"])
-        assert set(result) == {"a", "b", "c", "d"}
 
-    def test_includes_stale_upstream_deps(self):
-        a = _make_node("a")
-        b = _make_node("b", depends_on=["a"])
-        graph = build_graph([a, b])
-
-        result = cascade(graph, ["b"], stale_ids={"a", "b"})
-        assert set(result) == {"a", "b"}
-        assert result.index("a") < result.index("b")
-
-    def test_includes_transitive_stale_upstream_deps(self):
-        a = _make_node("a")
-        b = _make_node("b", depends_on=["a"])
-        c = _make_node("c", depends_on=["b"])
-        graph = build_graph([a, b, c])
-
-        result = cascade(graph, ["c"], stale_ids={"a", "b", "c"})
-        assert set(result) == {"a", "b", "c"}
-        assert result.index("a") < result.index("b") < result.index("c")
+class TestUpstream:
+    def test_transitive_deps_and_parents(self):
+        graph = build_graph(
+            [
+                _make_node("root"),
+                _make_node("a"),
+                _make_node("b", depends_on=["a"], parent="root"),
+                _make_node("c", depends_on=["b"]),
+                _make_node("unrelated"),
+            ]
+        )
+        assert upstream(graph, ["c"]) == {"a", "b", "root"}
+        assert upstream(graph, ["a"]) == set()
 
 
 class TestImpactSummary:

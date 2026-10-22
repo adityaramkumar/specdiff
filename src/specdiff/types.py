@@ -23,6 +23,8 @@ class HashMapEntry:
     generated_at: str
     # SHA-256 of each generated file as written, used to detect hand edits.
     output_hashes: dict[str, str] = field(default_factory=dict)
+    # Everything the build depended on (see plan.compute_states); empty for legacy maps.
+    inputs: dict[str, str] = field(default_factory=dict)
 
     def to_dict(self) -> dict:
         return {
@@ -30,6 +32,7 @@ class HashMapEntry:
             "generated_files": self.generated_files,
             "generated_at": self.generated_at,
             "output_hashes": self.output_hashes,
+            "inputs": self.inputs,
         }
 
     @classmethod
@@ -39,6 +42,7 @@ class HashMapEntry:
             generated_files=data["generated_files"],
             generated_at=data["generated_at"],
             output_hashes=data.get("output_hashes", {}),
+            inputs=data.get("inputs", {}),
         )
 
 

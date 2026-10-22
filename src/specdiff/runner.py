@@ -10,7 +10,7 @@ import click
 
 from specdiff import hashmap
 from specdiff.agents.swarm import run_swarm
-from specdiff.graph import SpecGraph
+from specdiff.graph import SpecGraph, ancestors
 from specdiff.types import HashMap, SpecdiffConfig, SpecNode, SwarmResult
 
 BACKUP_DIR = ".backup"
@@ -134,8 +134,12 @@ def execute_swarm_cascade(
     *,
     skip_review: bool = False,
     force: bool = False,
+    inputs: dict[str, dict[str, str]] | None = None,
 ) -> bool:
-    """Build nodes using the multi-agent swarm pipeline."""
+    """Build nodes using the multi-agent swarm pipeline.
+
+    inputs maps node id to the build inputs recorded in the hash map on success.
+    """
     if (specs_dir / BACKUP_DIR).exists():
         click.echo(
             f"  {specs_dir / BACKUP_DIR} exists from an interrupted build. Copy back any "
@@ -210,7 +214,7 @@ def execute_swarm_cascade(
                     Path(stale_path).unlink(missing_ok=True)
 
     for node in ordered_nodes:
-        hashmap.update(hm, node.id, node.hash, all_written[node.id])
+        hashmap.update(hm, node.id, node.hash, all_written[node.id], (inputs or {}).get(node.id))
     return True
 
 
@@ -253,6 +257,7 @@ def _build_nodes(
                     specs_dir,
                     dep_specs=dep_specs,
                     dep_generated=dep_generated or None,
+                    ancestor_specs=ancestors(graph, node.id),
                     prior_critique=prior_critique,
                 )
             except Exception as exc:
