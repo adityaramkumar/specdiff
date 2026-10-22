@@ -31,54 +31,54 @@ All changes must pass CI (lint + tests) before merging.
 
 ```
 src/specdiff/
-  cli.py          # Click CLI commands (build, status, impact, review, ui, extract, init)
-  parser.py       # Spec file parser (frontmatter + SHA-256 hashing)
-  graph.py        # Dependency graph, topological sort, cascade walk
-  hashmap.py      # Hash map store (.specdiff/hash-map.json)
-  runner.py       # Build orchestration: retry loop, backup/restore, test gating
-  skills.py       # Skill file loader (discovers *.skill.md from specs_dir/skills/)
-  llm.py          # LLM client (Gemini + xAI/OpenAI-compatible) + JSON extraction
-  types.py        # Dataclasses: SpecNode, SpecdiffConfig, HashMap, SwarmResult, FilePlan
-  extract.py      # Reverse-engineer existing code into spec files
+  cli.py            # Click CLI commands
+  config.py         # .specdiff/config.yaml loader
+  parser.py         # Spec file parser (frontmatter + SHA-256 hashing)
+  graph.py          # Spec graph: depends_on and parent edges, topological sort
+  plan.py           # Fingerprints, staleness reasons, build order
+  hashmap.py        # .specdiff/hash-map.json store, hand-edit detection
+  skills.py         # Built-in skills with per-project overrides
+  default_skills/   # Built-in stage prompts (plan, implement, test, repair, review, spec-eval)
+  providers/        # One module per LLM provider (gemini, claude, openai_compat)
+  llm.py            # generate_content() facade + extract_json()
   agents/
-    spec_agent.py # Spec review agent (specdiff review command)
-    swarm.py      # Multi-agent pipeline (ADK path for Gemini, custom path for xAI)
+    context.py      # NodeContext and the shared prompt prefix
+    fileblocks.py   # <file path="..."> output format
+    stages.py       # plan / implement / test / repair / review calls
+    pipeline.py     # Per-node loop: generate, check, repair
+    spec_agent.py   # Spec review (specdiff review)
+  build/
+    project.py      # Builds a NodeContext from the hash map and disk
+    checks.py       # Static checks and command runs
+    files.py        # Paths, headers, backup/restore, NodeWriter
+    runner.py       # Per-node build loop with isolated rollback
+  extract.py        # Reverse-engineer existing code into spec files
 ```
 
 ## Pipeline Architecture
 
-The build pipeline runs four stages in sequence for each spec node:
+For each stale spec, in prerequisite order:
 
 ```
-Architect → Interface Planner → (Implementation ‖ Testing) → Review
+plan -> (implement || test) -> checks -> [repair -> checks]* -> review
 ```
 
-- **Architect**: produces a JSON map of `{file_path: responsibility}` — the file plan.
-- **Interface Planner**: produces a JSON map of `{file_path: interface_definition}` — exact signatures and type annotations before any implementation is written.
-- **Implementation** and **Testing** run in parallel. Implementation writes code; Testing writes a test suite. Both see the interface spec from the previous stage.
-- **Review**: checks that the generated code satisfies every requirement in the spec. Returns `{"passed": bool, "feedback": str}`.
+- **Plan** returns `<code>`/`<test>` entries and an `<interface>` block: the exact names, signatures and error messages that code and tests must share.
+- **Implement** and **test** run in parallel from the plan. Tests never see the implementation.
+- **Checks** (`build/checks.py`, `agents/pipeline.py`) run cheapest first: path and ownership, Python syntax, `check_command`, `test_command`. The LLM review only runs after these pass.
+- **Repair** receives the failing check's real output and may change or `<delete>` this spec's own files.
+- The runner commits each spec as soon as it passes. A failing spec is rolled back alone; its dependents are skipped.
 
-If Review rejects the output, the critique is injected back into the prompt and the whole pipeline retries (up to `max_retries` times, configurable in `config.yaml`). After `max_retries` exhausted with `--no-review`, the build continues with a warning; without it, the build fails and rolls back.
+All stages return files as `<file path="...">` blocks (`agents/fileblocks.py`). Never route generated code through JSON.
 
-### Dependency Code Context
-
-When building a node that has `depends_on` entries, the runner reads the already-generated files for each dependency from disk and injects them into the prompt as `--- DEPENDENCY IMPLEMENTATION ---` sections. This gives the Implementation agent real API shapes to code against, not just spec prose.
-
-### Two LLM Backends
-
-`swarm.py` dispatches on the model name prefix:
-
-- **Gemini models** (`gemini-*`): uses the Google ADK pipeline (`SequentialAgent`, `ParallelAgent`, `InMemoryRunner`). Each agent's `output_key` is written to session state.
-- **xAI / OpenAI-compatible models** (`grok-*`, etc.): uses a custom `ThreadPoolExecutor`-based pipeline in `_run_pipeline_custom`. Each stage appends its output to a growing context string.
-
-Both backends share the same `_build_prompt` function and `run_swarm` entry point.
+Testing tip: `tests/fake_llm.py` stands in for every provider by replying per (spec, stage). Patch `specdiff.agents.stages.complete` with it (the `fake_llm` fixture does) and the real parsing, checks, file writes and repair loop all run.
 
 ## How to Contribute
 
 1. **Bug fixes** -- open an issue first, then submit a PR with a test that reproduces the bug.
 2. **New features** -- discuss in an issue before writing code. The phased build plan in [DESIGN.md](DESIGN.md) describes what's planned.
-3. **Examples** -- new example projects in `examples/` are welcome. Each should be self-contained with its own `.specdiff/` directory. Copy the skill files from `examples/shared-skills/` into the example's `.specdiff/skills/`.
-4. **Skill files** -- improvements to the example skill files in `examples/shared-skills/` that produce better generation output.
+3. **Examples** -- new example projects in `examples/` are welcome. Each should be self-contained with its own `.specdiff/` directory and a `test_command` that actually finds its tests.
+4. **Skills** -- improvements to `src/specdiff/default_skills/` that produce better generation output.
 
 ## Code Style
 

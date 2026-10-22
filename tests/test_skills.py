@@ -2,33 +2,35 @@ from __future__ import annotations
 
 import pytest
 
-from specdiff.skills import discover_skills, load_skill
+from specdiff.skills import BUILD_SKILLS, legacy_skill_files, load_build_skills, load_skill
 
 
 class TestLoadSkill:
-    def test_load_existing(self, tmp_path):
+    def test_user_file_overrides_builtin(self, tmp_path):
         skills = tmp_path / "skills"
         skills.mkdir()
-        (skills / "spec-eval.skill.md").write_text("## Role\nYou review specs.\n")
+        (skills / "implement.skill.md").write_text("Custom rules.\n")
+        assert load_skill(tmp_path, "implement") == "Custom rules.\n"
 
-        content = load_skill(tmp_path, "spec-eval")
-        assert "You review specs" in content
+    def test_builtin_used_when_no_override(self, tmp_path):
+        assert "implementation stage" in load_skill(tmp_path, "implement")
 
-    def test_load_missing(self, tmp_path):
+    def test_every_build_skill_and_spec_eval_has_a_builtin(self, tmp_path):
+        assert set(load_build_skills(tmp_path)) == set(BUILD_SKILLS)
+        assert "spec quality reviewer" in load_skill(tmp_path, "spec-eval")
+
+    def test_unknown_skill_raises(self, tmp_path):
         with pytest.raises(FileNotFoundError, match="Skill file not found"):
             load_skill(tmp_path, "nonexistent")
 
 
-class TestDiscoverSkills:
-    def test_finds_multiple(self, tmp_path):
+class TestLegacySkills:
+    def test_reports_files_from_previous_pipeline(self, tmp_path):
         skills = tmp_path / "skills"
         skills.mkdir()
-        (skills / "spec-eval.skill.md").write_text("spec eval content")
-        (skills / "impl.skill.md").write_text("impl content")
-
-        result = discover_skills(tmp_path)
-        assert set(result.keys()) == {"spec-eval", "impl"}
-        assert "spec eval content" in result["spec-eval"]
-
-    def test_empty_dir(self, tmp_path):
-        assert discover_skills(tmp_path) == {}
+        for name in ("architect", "implementation", "review"):
+            (skills / f"{name}.skill.md").write_text("x")
+        assert [p.name for p in legacy_skill_files(tmp_path)] == [
+            "architect.skill.md",
+            "implementation.skill.md",
+        ]

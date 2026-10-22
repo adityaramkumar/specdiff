@@ -7,9 +7,11 @@ from unittest.mock import patch
 
 from click.testing import CliRunner
 
-from specdiff.agents.swarm import REQUIRED_SKILLS
 from specdiff.cli import cli
-from specdiff.types import FilePlan, ReviewResult, SwarmResult
+from specdiff.types import ReviewResult
+from tests.fake_llm import FakeLLM
+
+LLM = "specdiff.agents.stages.complete"
 
 
 def _write_spec(
@@ -39,55 +41,12 @@ def _setup_project(tmp_path: Path, specs: list[dict], *, with_skill: bool = Fals
 
     skills_dir = specdiff_dir / "skills"
     skills_dir.mkdir()
-    for name in REQUIRED_SKILLS:
-        (skills_dir / f"{name}.skill.md").write_text(f"Skill for {name}")
     if with_skill:
         (skills_dir / "spec-eval.skill.md").write_text("## Role\nYou review specs.\n")
 
     for s in specs:
         _write_spec(specdiff_dir, s["path"], s["id"], s.get("depends_on"))
     return tmp_path
-
-
-def _mock_swarm_result(node, config, specs_dir, **kwargs):
-    """Fake swarm that returns a SwarmResult writing one file per node."""
-    return SwarmResult(
-        file_plan=FilePlan(files={f"{node.id.replace('/', '_')}.py": "impl"}),
-        generated_files={f"{node.id.replace('/', '_')}.py": f"# generated from {node.id}\n"},
-        generated_tests={},
-        review_passed=True,
-        review_feedback="All criteria met.",
-    )
-
-
-def _mock_swarm_result_ts(node, config, specs_dir, **kwargs):
-    return SwarmResult(
-        file_plan=FilePlan(files={"auth/login.ts": "impl"}),
-        generated_files={"auth/login.ts": "export function login() {}\n"},
-        generated_tests={},
-        review_passed=True,
-        review_feedback="All criteria met.",
-    )
-
-
-def _mock_swarm_result_with_tests(node, config, specs_dir, **kwargs):
-    return SwarmResult(
-        file_plan=FilePlan(files={"auth/login.ts": "impl", "tests/auth/login.test.ts": "test"}),
-        generated_files={"auth/login.ts": "export function login() {}\n"},
-        generated_tests={"tests/auth/login.test.ts": "test('login', () => {})\n"},
-        review_passed=True,
-        review_feedback="All criteria met.",
-    )
-
-
-def _mock_swarm_review_fail(node, config, specs_dir, **kwargs):
-    return SwarmResult(
-        file_plan=FilePlan(files={"auth/login.ts": "impl"}),
-        generated_files={"auth/login.ts": "export function login() {}\n"},
-        generated_tests={},
-        review_passed=False,
-        review_feedback="Spec mismatch.",
-    )
 
 
 def _mock_review_pass(node, skill, config):
@@ -187,8 +146,7 @@ class TestBuild:
         assert result.exit_code != 0
         assert "not found" in result.output
 
-    @patch("specdiff.runner.run_swarm", side_effect=_mock_swarm_result)
-    def test_build_single_node_id(self, mock_swarm, tmp_path):
+    def test_build_single_node_id(self, fake_llm, tmp_path):
         proj = _setup_project(
             tmp_path,
             [
@@ -201,20 +159,20 @@ class TestBuild:
             os.chdir(proj)
             result = runner.invoke(cli, ["build", "auth/login"], catch_exceptions=False)
         assert result.exit_code == 0, result.output
-        assert mock_swarm.call_count == 1
+        assert [n for n, stage in fake_llm.calls if stage == "plan"] == ["auth/login"]
 
-    @patch("specdiff.runner.run_swarm", side_effect=_mock_swarm_review_fail)
-    def test_build_no_review_flag_continues_on_review_fail(self, mock_swarm, tmp_path):
+    def test_no_review_flag_skips_review_stage(self, fake_llm, tmp_path):
         proj = _setup_project(
             tmp_path,
             [{"path": "behaviors/auth/login.spec.md", "id": "auth/login"}],
         )
+        fake_llm.reply("auth/login", "review", "<verdict>fail</verdict><feedback>x</feedback>")
         runner = CliRunner()
         with runner.isolated_filesystem(temp_dir=tmp_path):
             os.chdir(proj)
             result = runner.invoke(cli, ["build", "--no-review"], catch_exceptions=False)
         assert result.exit_code == 0, result.output
-        assert "--no-review" in result.output
+        assert "review" not in fake_llm.stages("auth/login")
 
     @patch("specdiff.cli.review_spec", side_effect=_mock_review_fail)
     def test_build_review_before_build_aborts_on_fail(self, mock_review, tmp_path):
@@ -236,8 +194,7 @@ class TestBuild:
         assert result.exit_code != 0
         assert "failed review" in result.output
 
-    @patch("specdiff.runner.run_swarm", side_effect=_mock_swarm_result)
-    def test_updates_hashmap(self, mock_swarm, tmp_path):
+    def test_updates_hashmap(self, fake_llm, tmp_path):
         proj = _setup_project(
             tmp_path,
             [{"path": "behaviors/auth/login.spec.md", "id": "auth/login"}],
@@ -248,15 +205,14 @@ class TestBuild:
             result = runner.invoke(cli, ["build"], catch_exceptions=False)
 
         assert result.exit_code == 0, result.output
-        assert "Build complete" in result.output
+        assert "Built 1, failed 0, skipped 0" in result.output
 
         hm_path = proj / ".specdiff" / "hash-map.json"
         assert hm_path.exists()
         data = json.loads(hm_path.read_text())
         assert "auth/login" in data
 
-    @patch("specdiff.runner.run_swarm", side_effect=_mock_swarm_result)
-    def test_idempotent(self, mock_swarm, tmp_path):
+    def test_idempotent(self, fake_llm, tmp_path):
         proj = _setup_project(
             tmp_path,
             [{"path": "behaviors/auth/login.spec.md", "id": "auth/login"}],
@@ -270,11 +226,16 @@ class TestBuild:
         assert result.exit_code == 0, result.output
         assert "Everything is up to date" in result.output
 
-    @patch("specdiff.runner.run_swarm", side_effect=_mock_swarm_result_ts)
-    def test_writes_language_aware_traceability_headers(self, mock_swarm, tmp_path):
+    def test_writes_language_aware_traceability_headers(self, fake_llm, tmp_path):
         proj = _setup_project(
             tmp_path,
             [{"path": "behaviors/auth/login.spec.md", "id": "auth/login"}],
+        )
+        fake_llm.reply("auth/login", "plan", '<code path="auth/login.ts">x</code>')
+        fake_llm.reply(
+            "auth/login",
+            "implement",
+            '<file path="auth/login.ts">\nexport function login() {}\n</file>',
         )
         runner = CliRunner()
         with runner.isolated_filesystem(temp_dir=tmp_path):
@@ -283,44 +244,26 @@ class TestBuild:
 
         assert result.exit_code == 0, result.output
         generated = proj / "src" / "auth" / "login.ts"
-        assert generated.exists()
         assert generated.read_text().startswith("// generated_from: auth/login")
 
-    @patch("specdiff.runner.run_swarm", side_effect=_mock_swarm_review_fail)
-    def test_fails_build_when_swarm_review_fails(self, mock_swarm, tmp_path):
+    def test_review_failure_after_repairs_fails_the_build(self, fake_llm, tmp_path):
         proj = _setup_project(
             tmp_path,
             [{"path": "behaviors/auth/login.spec.md", "id": "auth/login"}],
         )
+        fail = "<verdict>fail</verdict><feedback>missing lockout</feedback>"
+        fake_llm.reply("auth/login", "review", fail, fail, fail)
         runner = CliRunner()
         with runner.isolated_filesystem(temp_dir=tmp_path):
             os.chdir(proj)
             result = runner.invoke(cli, ["build"])
 
         assert result.exit_code == 1
-        assert "review failed" in result.output
+        assert "missing lockout" in result.output
+        assert fake_llm.stages("auth/login").count("repair") == 2
+        assert not (proj / "src" / "auth_login.py").exists()
         hm_path = proj / ".specdiff" / "hash-map.json"
-        if hm_path.exists():
-            data = json.loads(hm_path.read_text())
-            assert "auth/login" not in data
-
-    @patch("specdiff.runner.run_swarm", side_effect=_mock_swarm_result_with_tests)
-    def test_fails_build_when_generated_tests_have_no_test_command(self, mock_swarm, tmp_path):
-        proj = _setup_project(
-            tmp_path,
-            [{"path": "behaviors/auth/login.spec.md", "id": "auth/login"}],
-        )
-        runner = CliRunner()
-        with runner.isolated_filesystem(temp_dir=tmp_path):
-            os.chdir(proj)
-            result = runner.invoke(cli, ["build"])
-
-        assert result.exit_code == 1
-        assert "generated tests but no test_command is configured" in result.output
-        hm_path = proj / ".specdiff" / "hash-map.json"
-        if hm_path.exists():
-            data = json.loads(hm_path.read_text())
-            assert "auth/login" not in data
+        assert not hm_path.exists() or "auth/login" not in json.loads(hm_path.read_text())
 
 
 class TestBuildDryRun:
@@ -401,12 +344,12 @@ class TestBuildDryRun:
         )
         runner = CliRunner()
         with (
-            patch("specdiff.runner.run_swarm") as mock_swarm,
+            patch(LLM) as mock_llm,
             runner.isolated_filesystem(temp_dir=tmp_path),
         ):
             os.chdir(proj)
             runner.invoke(cli, ["build", "--dry-run"], catch_exceptions=False)
-        mock_swarm.assert_not_called()
+        mock_llm.assert_not_called()
 
 
 class TestImpact:
@@ -621,9 +564,8 @@ class TestReview:
         proposed = proj / ".specdiff" / "proposed" / "auth_login.spec.md"
         assert proposed.exists()
 
-    @patch("specdiff.runner.run_swarm", side_effect=_mock_swarm_result)
     @patch("specdiff.cli.review_spec", side_effect=_mock_review_pass)
-    def test_build_reviews_all_stale_specs_when_enabled(self, mock_review, mock_swarm, tmp_path):
+    def test_build_reviews_all_stale_specs_when_enabled(self, mock_review, fake_llm, tmp_path):
         proj = _setup_project(
             tmp_path,
             [{"path": "behaviors/login.spec.md", "id": "auth/login"}],
@@ -653,15 +595,16 @@ class TestInit:
         assert result.exit_code == 0
         assert (tmp_path / ".specdiff").is_dir()
         assert (tmp_path / ".specdiff" / "config.yaml").exists()
-        assert (tmp_path / ".specdiff" / "skills").is_dir()
-        assert (tmp_path / ".specdiff" / "skills" / "spec-eval.skill.md").exists()
+        assert (tmp_path / ".specdiff" / "skills" / "README.md").exists()
+        assert (tmp_path / ".specdiff" / "behaviors" / "hello.spec.md").exists()
+        assert "test_command:" in (tmp_path / ".specdiff" / "config.yaml").read_text()
 
     def test_init_message(self, tmp_path):
         runner = CliRunner()
         with runner.isolated_filesystem(temp_dir=tmp_path):
             os.chdir(tmp_path)
             result = runner.invoke(cli, ["init"], catch_exceptions=False)
-        assert "Initialized" in result.output
+        assert "Created .specdiff/" in result.output
 
     def test_config_contains_model(self, tmp_path):
         runner = CliRunner()
@@ -932,7 +875,7 @@ class TestHandEdits:
             tmp_path, [{"path": "behaviors/auth/login.spec.md", "id": "auth/login"}]
         )
         os.chdir(proj)
-        with patch("specdiff.runner.run_swarm", side_effect=_mock_swarm_result):
+        with patch(LLM, FakeLLM()):
             result = CliRunner().invoke(cli, ["build"], catch_exceptions=False)
         assert result.exit_code == 0, result.output
         generated = proj / "src" / "auth_login.py"
@@ -951,13 +894,13 @@ class TestHandEdits:
     def test_build_refuses_then_force_overwrites(self, tmp_path, monkeypatch):
         monkeypatch.chdir(tmp_path)
         generated = self._build_then_edit(tmp_path)
-        with patch("specdiff.runner.run_swarm", side_effect=_mock_swarm_result):
+        with patch(LLM, FakeLLM()):
             refused = CliRunner().invoke(cli, ["build"])
             assert refused.exit_code == 1
             assert generated.read_text() == "# hotfix\n"
             forced = CliRunner().invoke(cli, ["build", "--force"], catch_exceptions=False)
         assert forced.exit_code == 0, forced.output
-        assert "# generated from auth/login" in generated.read_text()
+        assert 'VALUE = "auth/login"' in generated.read_text()
 
 
 class TestStalenessReporting:
@@ -992,7 +935,7 @@ class TestStalenessReporting:
             ],
         )
         monkeypatch.chdir(proj)
-        with patch("specdiff.runner.run_swarm", side_effect=_mock_swarm_result):
+        with patch(LLM, FakeLLM()):
             assert CliRunner().invoke(cli, ["build"], catch_exceptions=False).exit_code == 0
 
         contract = proj / ".specdiff" / "contracts" / "users.spec.md"
@@ -1006,9 +949,9 @@ class TestStalenessReporting:
     def test_skill_change_marks_everything_stale(self, tmp_path, monkeypatch):
         proj = _setup_project(tmp_path, [{"path": "a.spec.md", "id": "a"}])
         monkeypatch.chdir(proj)
-        with patch("specdiff.runner.run_swarm", side_effect=_mock_swarm_result):
+        with patch(LLM, FakeLLM()):
             CliRunner().invoke(cli, ["build"], catch_exceptions=False)
-        (proj / ".specdiff" / "skills" / "implementation.skill.md").write_text("New rules")
+        (proj / ".specdiff" / "skills" / "implement.skill.md").write_text("New rules")
 
         result = CliRunner().invoke(cli, ["status"], catch_exceptions=False)
         assert "skills changed" in result.output
@@ -1024,10 +967,31 @@ class TestStalenessReporting:
         )
         _write_spec(proj / ".specdiff", "a.spec.md", "a", status="draft")
         monkeypatch.chdir(proj)
-        with patch("specdiff.runner.run_swarm", side_effect=_mock_swarm_result) as swarm:
+        with patch(LLM, FakeLLM()) as llm:
             result = CliRunner().invoke(cli, ["build"], catch_exceptions=False)
 
         assert result.exit_code == 0, result.output
-        assert [c.args[0].id for c in swarm.call_args_list] == ["c"]
+        assert [n for n, stage in llm.calls if stage == "plan"] == ["c"]
         assert "Skipping a (draft)" in result.output
         assert "Skipping b (waits on a)" in result.output
+
+
+class TestSkillCommand:
+    def test_prints_builtin_skill(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        result = CliRunner().invoke(cli, ["skill", "repair"], catch_exceptions=False)
+        assert "repair stage" in result.output
+
+    def test_unknown_skill_errors(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        result = CliRunner().invoke(cli, ["skill", "nope"])
+        assert result.exit_code == 1
+
+
+class TestLegacySkillNotice:
+    def test_build_notes_unused_legacy_skill_files(self, tmp_path, monkeypatch, fake_llm):
+        proj = _setup_project(tmp_path, [{"path": "a.spec.md", "id": "a"}])
+        (proj / ".specdiff" / "skills" / "architect.skill.md").write_text("old")
+        monkeypatch.chdir(proj)
+        result = CliRunner().invoke(cli, ["build"], catch_exceptions=False)
+        assert "architect.skill.md is no longer used" in result.output

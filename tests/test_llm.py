@@ -2,17 +2,13 @@ from __future__ import annotations
 
 import json
 import os
-from unittest.mock import patch
 
 import click
 import pytest
 
-from specdiff.llm import (
-    ProviderConfig,
-    _get_api_key,
-    detect_provider,
-    extract_json,
-)
+from specdiff.llm import extract_json
+from specdiff.providers import detect_provider
+from specdiff.providers.keys import require_env
 
 
 class TestExtractJson:
@@ -56,47 +52,32 @@ class TestExtractJson:
 
 
 class TestDetectProvider:
-    def test_gemini_prefix(self):
-        name, config = detect_provider("gemini-2.5-flash")
-        assert name == "gemini"
-        assert config.api_key_env == "GEMINI_API_KEY"
+    @pytest.mark.parametrize(
+        ("model", "provider"),
+        [
+            ("gemini-2.5-flash", "gemini"),
+            ("claude-opus-5-5", "anthropic"),
+            ("grok-4-fast", "xai"),
+            ("gpt-5", "openai"),
+            ("o3-mini", "openai"),
+        ],
+    )
+    def test_prefixes(self, model, provider):
+        assert detect_provider(model) == provider
 
-    def test_grok_prefix(self):
-        name, config = detect_provider("grok-4-fast")
-        assert name == "grok"
-        assert config.api_key_env == "XAI_API_KEY"
-        assert config.base_url is not None
-
-    def test_unknown_falls_back_to_gemini(self):
-        name, config = detect_provider("unknown-model-xyz")
-        assert name == "gemini"
-        assert config.api_key_env == "GEMINI_API_KEY"
-
-    def test_gemini_lite_variant(self):
-        name, _ = detect_provider("gemini-2.0-flash-lite")
-        assert name == "gemini"
-
-    def test_grok_returns_xai_base_url(self):
-        _, config = detect_provider("grok-anything")
-        assert "x.ai" in (config.base_url or "")
+    def test_unknown_model_is_an_error_not_a_silent_fallback(self):
+        with pytest.raises(click.ClickException, match="Supported model name prefixes"):
+            detect_provider("llama-3")
 
 
-class TestGetApiKey:
-    def test_returns_key_when_set(self):
-        config = ProviderConfig(api_key_env="TEST_SPECDIFF_KEY_ABC")
-        with patch.dict("os.environ", {"TEST_SPECDIFF_KEY_ABC": "my-secret-key"}):
-            assert _get_api_key(config) == "my-secret-key"
+class TestRequireEnv:
+    def test_returns_value_when_set(self, monkeypatch):
+        monkeypatch.setenv("TEST_SPECDIFF_KEY_ABC", "my-secret-key")
+        assert require_env("TEST_SPECDIFF_KEY_ABC") == "my-secret-key"
 
-    def test_raises_click_exception_when_missing(self):
-        config = ProviderConfig(api_key_env="MISSING_SPECDIFF_KEY_XYZ")
+    def test_missing_key_explains_how_to_set_it(self):
         os.environ.pop("MISSING_SPECDIFF_KEY_XYZ", None)
         with pytest.raises(click.ClickException) as exc_info:
-            _get_api_key(config)
-        assert "MISSING_SPECDIFF_KEY_XYZ" in str(exc_info.value.format_message())
-
-    def test_error_message_includes_export_hint(self):
-        config = ProviderConfig(api_key_env="MY_TEST_KEY_FOR_HINT")
-        os.environ.pop("MY_TEST_KEY_FOR_HINT", None)
-        with pytest.raises(click.ClickException) as exc_info:
-            _get_api_key(config)
-        assert "export" in exc_info.value.format_message().lower()
+            require_env("MISSING_SPECDIFF_KEY_XYZ")
+        message = exc_info.value.format_message()
+        assert "MISSING_SPECDIFF_KEY_XYZ" in message and "export" in message
