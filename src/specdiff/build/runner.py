@@ -35,6 +35,15 @@ class BuildReport:
 def preflight(ordered_nodes: list[SpecNode], config: SpecdiffConfig, hm: HashMap,
               specs_dir: Path, force: bool) -> None:  # fmt: skip
     """Refuse to build when doing so could lose work or blame the wrong spec."""
+    missing = [
+        f"  {n.id}: {p}" for n in ordered_nodes for p in n.acceptance if not Path(p).is_file()
+    ]
+    if missing:
+        raise BuildRefused("Acceptance test files not found:\n" + "\n".join(missing))
+    if any(n.acceptance for n in ordered_nodes) and not (
+        config.acceptance_command or config.test_command
+    ):
+        raise BuildRefused("Specs list acceptance tests, but no test_command is configured.")
     if (specs_dir / BACKUP_DIR).exists():
         raise BuildRefused(
             f"{specs_dir / BACKUP_DIR} exists from an interrupted build. Copy back any files "
@@ -81,6 +90,7 @@ def execute_build(
         review=review,
         test_command=config.test_command,
         check_command=config.check_command,
+        acceptance_command=config.acceptance_command or config.test_command,
     )
     report = BuildReport()
     for node in ordered_nodes:

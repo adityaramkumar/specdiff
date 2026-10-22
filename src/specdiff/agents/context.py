@@ -34,6 +34,8 @@ class NodeContext:
     dep_files: dict[str, str] = field(default_factory=dict)
     own_files: dict[str, str] = field(default_factory=dict)
     others: dict[str, str] = field(default_factory=dict)
+    # Hand-written acceptance tests, keyed by path from the project root.
+    acceptance: dict[str, str] = field(default_factory=dict)
     test_framework: str | None = None
     test_command: str | None = None
     check_command: str | None = None
@@ -71,6 +73,12 @@ def render(ctx: NodeContext) -> str:
         f"# Spec `{node.id}` (version {node.version}) -- the one you are building\n\n"
         f"{node.content.strip()}"
     )
+    if ctx.acceptance:
+        sections.append(
+            "# Acceptance tests for this spec\n\nHand-written by the spec's author. They are "
+            "the contract: the code must pass them, and they can never be changed. Paths "
+            "here are from the project root.\n\n" + fileblocks.render(ctx.acceptance)
+        )
     return "\n\n".join(sections) + "\n"
 
 

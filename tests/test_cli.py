@@ -995,3 +995,15 @@ class TestLegacySkillNotice:
         monkeypatch.chdir(proj)
         result = CliRunner().invoke(cli, ["build"], catch_exceptions=False)
         assert "architect.skill.md is no longer used" in result.output
+
+
+class TestValidateAcceptance:
+    def test_missing_acceptance_file_is_reported(self, tmp_path, monkeypatch):
+        proj = _setup_project(tmp_path, [])
+        (proj / ".specdiff" / "a.spec.md").write_text(
+            "---\nid: a\nversion: '1'\nstatus: approved\nacceptance:\n  - tests/acc.py\n---\nx\n"
+        )
+        monkeypatch.chdir(proj)
+        result = CliRunner().invoke(cli, ["validate"])
+        assert result.exit_code == 1
+        assert "acceptance test 'tests/acc.py' not found" in result.output

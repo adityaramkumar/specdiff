@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import shlex
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
@@ -18,6 +19,7 @@ class PipelineConfig:
     review: bool = True
     test_command: str | None = None
     check_command: str | None = None
+    acceptance_command: str | None = None
 
 
 @dataclass
@@ -101,13 +103,21 @@ def _check(
 
     sync(files)
     ours.update(files)
-    for label, command in (("Check", cfg.check_command), ("Tests", cfg.test_command)):
+    acceptance = None
+    if ctx.acceptance and cfg.acceptance_command:
+        acceptance = f"{cfg.acceptance_command} {' '.join(map(shlex.quote, ctx.acceptance))}"
+    commands = (
+        ("check", "Check failed", cfg.check_command),
+        ("tests", "Tests failed", cfg.test_command),
+        ("acceptance tests", "Hand-written acceptance tests failed (fix the code)", acceptance),
+    )
+    for name, heading, command in commands:
         if not command:
             continue
-        log(f"running {label.lower()}")
+        log(f"running {name}")
         passed, output = run_command(command)
         if not passed:
-            return f"{label} failed: `{command}`\n\n```\n{output}\n```"
+            return f"{heading}: `{command}`\n\n```\n{output}\n```"
 
     if cfg.review:
         log("reviewing")

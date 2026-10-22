@@ -172,3 +172,21 @@ class TestDependsOnValidation:
         f = self._write(tmp_path, "ok.spec.md", "depends_on:\n  - a/b\n  - c/d\n")
         node = parse_spec_file(f)
         assert node.depends_on == ["a/b", "c/d"]
+
+
+class TestAcceptanceField:
+    def _write(self, tmp_path, extra: str):
+        path = tmp_path / "a.spec.md"
+        path.write_text(f"---\nid: a\nversion: '1'\nstatus: approved\n{extra}---\nBody\n")
+        return path
+
+    def test_parsed_as_list(self, tmp_path):
+        node = parse_spec_file(self._write(tmp_path, "acceptance:\n  - tests/acc/test_a.py\n"))
+        assert node.acceptance == ["tests/acc/test_a.py"]
+
+    def test_defaults_to_empty(self, tmp_path):
+        assert parse_spec_file(self._write(tmp_path, "")).acceptance == []
+
+    def test_string_rejected(self, tmp_path):
+        with pytest.raises(ValueError, match="'acceptance' must be a list of strings"):
+            parse_spec_file(self._write(tmp_path, "acceptance: tests/x.py\n"))

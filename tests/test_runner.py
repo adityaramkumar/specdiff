@@ -207,6 +207,56 @@ class TestPreflight:
             _build(project, [_node("a", h="v2")], hm)
 
 
+class TestAcceptanceTests:
+    def _acceptance(self, node_id="a", body=None):
+        path = Path("tests/acceptance/test_a_accept.py")
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(
+            body
+            or "from a import VALUE, extra\n\n\ndef test_contract():\n    assert extra() == 42\n"
+        )
+        node = _node(node_id)
+        node.acceptance = [str(path)]
+        return node, path
+
+    def test_failing_acceptance_test_drives_repair_until_it_passes(self, project, fake_llm):
+        node, acc = self._acceptance()
+        fake_llm.reply(
+            "a",
+            "repair",
+            '<file path="a.py">\nVALUE = "a"\n\n\ndef extra():\n    return 42\n</file>',
+        )
+
+        report, hm = _build(project, [node])
+
+        assert report.ok
+        plan_prompt = fake_llm.prompts[fake_llm.calls.index(("a", "plan"))]
+        assert "# Acceptance tests for this spec" in plan_prompt
+        assert "assert extra() == 42" in plan_prompt
+        repair_prompt = fake_llm.prompts[fake_llm.calls.index(("a", "repair"))]
+        assert "Hand-written acceptance tests failed" in repair_prompt
+        assert str(acc) not in hm.nodes["a"].generated_files
+
+    def test_acceptance_file_cannot_be_written_by_agents(self, project, fake_llm):
+        node, acc = self._acceptance()
+        original = acc.read_text()
+        fake_llm.reply(
+            "a", "implement", '<file path="../tests/acceptance/test_a_accept.py">\npass\n</file>'
+        )
+
+        report, _ = _build(project, [node], max_retries=0)
+
+        assert "escapes output_dir" in report.failed["a"]
+        assert acc.read_text() == original
+
+    def test_missing_acceptance_file_refuses_build(self, project, fake_llm):
+        node = _node("a")
+        node.acceptance = ["tests/acceptance/nope.py"]
+        with pytest.raises(BuildRefused, match="nope.py"):
+            _build(project, [node])
+        assert fake_llm.calls == []
+
+
 class TestHandWrittenFiles:
     def test_existing_untracked_file_is_never_overwritten(self, project, fake_llm):
         Path("src").mkdir()

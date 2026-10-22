@@ -66,6 +66,24 @@ depends_on:
 
 Everything below the frontmatter is your spec -- prose, code snippets, whatever communicates the intent.
 
+### Acceptance tests
+
+Generated tests are written by the same model that writes the code, so passing them only shows the model agrees with itself. To pin down behavior yourself, write the tests and list them on the spec:
+
+```yaml
+---
+id: behaviors/auth/login
+version: "1.0.0"
+status: approved
+acceptance:
+  - tests/acceptance/test_login.py
+---
+```
+
+Acceptance tests are the contract. Agents see them, can never write them, and a spec is only saved once they pass; a failure goes to the repair stage with the instruction to fix the code. Editing an acceptance test marks its spec stale.
+
+They run as `acceptance_command` (default: `test_command`) with the files appended, so keep them somewhere your `test_command` doesn't already collect -- otherwise the baseline run fails before their spec is built. Write them before the code exists and `specdiff build` becomes test-driven.
+
 ## Examples
 
 Four generated example snapshots in [`examples/`](examples/), each with specs and generated output:
@@ -259,6 +277,7 @@ Extraction complete! Initialized 2 specs in .specdiff.
 | `test_framework` | (none) | Test framework named to agents (e.g. `pytest`, `vitest`) |
 | `test_command` | (none) | Run after each spec is generated, and once before the build as a baseline. Without it, no tests are generated and output is unverified. |
 | `check_command` | (none) | Extra command that must pass, e.g. `npx tsc --noEmit` |
+| `acceptance_command` | `test_command` | Runs a spec's acceptance tests, with their paths appended |
 | `review_before_build` | `false` | Require spec review to pass before build |
 | `max_retries` | `2` | Repair attempts per spec after a failed check |
 
