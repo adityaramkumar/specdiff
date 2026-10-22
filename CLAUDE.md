@@ -105,13 +105,15 @@ parent: auth                    # optional; parent node ID (hierarchy)
 depends_on:                     # optional; cross-branch dependencies
   - contracts/api/users
 language: typescript            # optional; overrides config default
+acceptance:                     # optional; hand-written tests the code must pass
+  - tests/acceptance/test_login.py
 ---
 
 ## Description
 Prose description of what this spec requires...
 ```
 
-Fields that affect the SHA-256 hash (trigger rebuild): `id`, `version`, `depends_on`, `parent`, `language`, body content.
+Fields that affect the SHA-256 hash (trigger rebuild): `id`, `version`, `depends_on`, `parent`, `language`, body content. Acceptance test file contents are part of the node fingerprint (`plan.py`), run after generated tests (`agents/pipeline.py`), and are unwritable by agents.
 Fields that do **not** affect the hash: `status`, `hash` (editorial-only).
 
 ### Code Conventions

@@ -56,6 +56,8 @@ def compute_states(
             inputs[f"dep:{dep_id}"] = states[dep_id].fingerprint
         if node.parent:
             inputs[f"parent:{node.parent}"] = states[node.parent].fingerprint
+        for path in node.acceptance:
+            inputs[f"acceptance:{path}"] = file_digest(Path(path))
 
         state = NodeState(inputs=inputs, fingerprint=_digest(inputs))
         entry = hm.nodes.get(nid)
@@ -72,7 +74,7 @@ def compute_states(
     return states
 
 
-_EDGE_NAMES = {"dep": "dependency", "parent": "parent"}
+_EDGE_NAMES = {"dep": "dependency", "parent": "parent", "acceptance": "acceptance test"}
 
 
 def _diff_reasons(old: dict[str, str], new: dict[str, str]) -> list[str]:
@@ -123,6 +125,10 @@ def plan_build(
         else:
             order.append(nid)
     return BuildPlan(order=order, blocked=blocked)
+
+
+def file_digest(path: Path) -> str:
+    return hashlib.sha256(path.read_bytes()).hexdigest() if path.is_file() else "missing"
 
 
 def _digest(data: dict) -> str:

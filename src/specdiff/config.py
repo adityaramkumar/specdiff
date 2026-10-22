@@ -22,5 +22,6 @@ def load_config(specs_dir: Path) -> SpecdiffConfig:
         language=raw.get("language", SpecdiffConfig.language),
         test_framework=raw.get("test_framework"),
         check_command=raw.get("check_command"),
+        acceptance_command=raw.get("acceptance_command"),
         max_retries=raw.get("max_retries", SpecdiffConfig.max_retries),
     )

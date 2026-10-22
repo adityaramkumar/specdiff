@@ -9,4 +9,6 @@ the implementation; the spec and the plan are your contract.
 - Import project code the way the project notes describe, from the planned paths.
 - Keep tests deterministic and self-contained: temporary directories for files, no
   network, no reliance on test order.
+- If the spec has hand-written acceptance tests, do not duplicate them; cover what
+  they leave out.
 - Do not write production code.

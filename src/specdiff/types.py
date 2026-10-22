@@ -14,6 +14,8 @@ class SpecNode:
     parent: str | None = None
     depends_on: list[str] = field(default_factory=list)
     language: str | None = None
+    # Hand-written test files (paths from the project root) the generated code must pass.
+    acceptance: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -69,6 +71,8 @@ class SpecdiffConfig:
     test_framework: str | None = None
     # Command that must pass besides the tests, e.g. a typechecker.
     check_command: str | None = None
+    # Runs a spec's acceptance tests, with their paths appended. Defaults to test_command.
+    acceptance_command: str | None = None
     # Repair attempts per node after a failed check.
     max_retries: int = 2
 

@@ -211,6 +211,11 @@ def validate() -> None:
         if node.parent and node.parent not in node_map:
             errors.append(f"  {node.id}: parent '{node.parent}' not found")
 
+    for node in nodes:
+        for path in node.acceptance:
+            if not Path(path).is_file():
+                errors.append(f"  {node.id}: acceptance test '{path}' not found")
+
     if not errors:
         try:
             build_graph(nodes)

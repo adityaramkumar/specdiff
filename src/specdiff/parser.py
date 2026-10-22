@@ -31,11 +31,7 @@ def parse_spec_file(file_path: Path) -> SpecNode:
     )
     content_hash = hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
-    raw_depends = meta.get("depends_on") or []
-    if not isinstance(raw_depends, list) or not all(isinstance(x, str) for x in raw_depends):
-        raise ValueError(
-            f"{file_path}: 'depends_on' must be a list of strings, got {raw_depends!r}"
-        )
+    raw_depends = _string_list(meta, "depends_on", file_path)
 
     return SpecNode(
         id=meta["id"],
@@ -47,7 +43,15 @@ def parse_spec_file(file_path: Path) -> SpecNode:
         parent=meta.get("parent"),
         depends_on=raw_depends,
         language=meta.get("language"),
+        acceptance=_string_list(meta, "acceptance", file_path),
     )
+
+
+def _string_list(meta: dict, key: str, file_path: Path) -> list[str]:
+    value = meta.get(key) or []
+    if not isinstance(value, list) or not all(isinstance(x, str) for x in value):
+        raise ValueError(f"{file_path}: '{key}' must be a list of strings, got {value!r}")
+    return value
 
 
 def discover_specs(root_dir: Path) -> list[SpecNode]:

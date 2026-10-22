@@ -125,3 +125,26 @@ class TestPlanBuild:
         graph, states = _states(nodes, hm)
         plan = plan_build(graph, states)
         assert plan.order == ["b"] and plan.blocked == {}
+
+
+class TestAcceptanceFingerprint:
+    def test_editing_an_acceptance_test_marks_the_spec_stale(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        acc = tmp_path / "test_acc.py"
+        acc.write_text("def test_a(): pass\n")
+        node = _node("a")
+        node.acceptance = ["test_acc.py"]
+        hm = _built([node])
+
+        acc.write_text("def test_a(): assert False\n")
+        _, states = _states([node], hm)
+        assert states["a"].reasons == ["test_acc.py changed"]
+
+    def test_new_acceptance_test_is_reported(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        (tmp_path / "test_acc.py").write_text("x")
+        hm = _built([_node("a")])
+        node = _node("a")
+        node.acceptance = ["test_acc.py"]
+        _, states = _states([node], hm)
+        assert "acceptance test test_acc.py added" in states["a"].reasons

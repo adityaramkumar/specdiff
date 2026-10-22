@@ -9,4 +9,6 @@ you fix the root cause.
   syntax error is usually the whole story.
 - Change as little as the fix needs, and keep the planned interfaces unless they
   are the problem.
+- Acceptance tests are hand-written by the spec's author and can never be changed.
+  When one fails, the code is wrong.
 - You may only change this spec's own files.

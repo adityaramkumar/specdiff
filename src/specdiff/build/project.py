@@ -56,6 +56,7 @@ def node_context(
         dep_files=_read([p for p in dep_paths if not is_test_path(p)], out),
         own_files=_read(own, out),
         others=others,
+        acceptance={p: Path(p).read_text("utf-8") for p in node.acceptance if Path(p).is_file()},
         test_framework=config.test_framework,
         test_command=config.test_command,
         check_command=config.check_command,
