@@ -72,15 +72,17 @@ def in_dir(path: Path) -> Iterator[None]:
 
 def hidden_results(tests_dir: Path, import_root: Path) -> tuple[int, int]:
     """Run hidden tests against code in import_root. Returns (passed, total collected)."""
-    junit = tests_dir.parent / "hidden-junit.xml"
-    subprocess.run(
-        f"PYTHONPATH={import_root} {PYTEST} {tests_dir} --junitxml={junit}",
-        shell=True,
-        capture_output=True,
-    )
-    if not junit.exists():
-        return 0, 0
-    root = ET.parse(junit).getroot()
+    # The report goes to a temp dir: tests_dir may be a case inside the repo.
+    with tempfile.TemporaryDirectory() as tmp:
+        junit = Path(tmp) / "junit.xml"
+        subprocess.run(
+            f"PYTHONPATH={import_root} {PYTEST} {tests_dir} --junitxml={junit}",
+            shell=True,
+            capture_output=True,
+        )
+        if not junit.exists():
+            return 0, 0
+        root = ET.parse(junit).getroot()
     suite = root if root.tag == "testsuite" else root[0]
     total = int(suite.get("tests", 0))
     bad = sum(int(suite.get(k, 0)) for k in ("failures", "errors", "skipped"))
