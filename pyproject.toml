@@ -44,7 +44,7 @@ specdiff = "specdiff.cli:cli"
 where = ["src"]
 
 [tool.setuptools.package-data]
-specdiff = ["default_skills/*.md"]
+specdiff = ["default_skills/*.md", "ui_dist/**/*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

@@ -91,12 +91,13 @@ Default model is `gemini-2.5-flash`.
 
 ### React UI (`ui/` + `api.py`)
 
-`specdiff ui` serves a React+Vite app that visualizes the spec dependency graph in real time:
-- **`api.py`** — FastAPI backend serving `/api/graph` (nodes + edges JSON); polled every 2s by the frontend
-- **`App.jsx`** — ReactFlow canvas with minimap and controls; exponential backoff on poll errors
-- **`SpecNode.jsx`** — Custom node component (status badge, version, cascade depth)
-- **`NodeDetails.jsx`** — Sidebar showing full spec content when a node is selected
-- **`layout.js`** — Dagre-based left-to-right hierarchical layout
+`specdiff ui` serves a React+Vite app that visualizes the spec graph in real time:
+- **`api.py`** — stdlib `http.server` on 127.0.0.1 serving `/api/graph` (nodes with status, `stale_reasons`, parent, acceptance; edges with `kind` `depends_on` or `parent`) and the built app from `src/specdiff/ui_dist/` (an in-memory placeholder if it is missing)
+- **`App.jsx`** — ReactFlow canvas; polls every 2s with exponential backoff on errors; the details panel tracks the selected node by id so it shows fresh data
+- **`SpecNode.jsx`** / **`NodeDetails.jsx`** — node card and details panel (`.css` utility classes are hand-written in `index.css`, not Tailwind)
+- **`layout.js`** — Dagre-based left-to-right layout
+
+`npm run build` writes to `src/specdiff/ui_dist/`, which is committed so editable installs work without Node and is rebuilt by the publish workflow. Commit the rebuilt output with UI source changes. `npm run dev` proxies `/api` to a running `specdiff ui --no-browser`. CI runs `npm run lint` (catches undefined names) and `npm run build`.
 
 ### Spec File Format
 

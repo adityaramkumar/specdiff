@@ -4,8 +4,9 @@ import {
   CheckCircle2, 
   AlertCircle, 
   Clock, 
-  GitMerge, 
-  FileCode2 
+  GitMerge,
+  FileCode2,
+  BookOpen,
 } from 'lucide-react';
 
 const statusConfig = {
@@ -29,6 +30,13 @@ const statusConfig = {
     bg: 'bg-blue-500/10',
     icon: AlertCircle,
     label: 'New'
+  },
+  context: {
+    color: 'text-violet-400',
+    border: 'border-violet-500/50',
+    bg: 'bg-violet-500/10',
+    icon: BookOpen,
+    label: 'Context'
   }
 };
 

@@ -208,7 +208,7 @@ $ specdiff ui --port 8000
 Starting Specdiff Graph UI Server at http://localhost:8000
 ```
 
-The UI displays the dependency graph, visualizes stale/current status, and shows the cascade depth blast radius for any potential changes. It automatically polls for changes as you edit specs.
+The UI shows the spec graph: dependency edges solid, parent edges dashed, context-only specs in violet. Each spec card shows whether it is current, stale or new; selecting one shows why it will rebuild, its parent, dependencies and acceptance tests, and how far a change to it cascades. The page updates every two seconds as you edit specs. The server listens on localhost only.
 
 ### `specdiff clean [node_id]`
 

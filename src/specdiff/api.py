@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import json
 import logging
-import os
 import threading
 import webbrowser
 from http.server import HTTPServer, SimpleHTTPRequestHandler
@@ -41,18 +40,29 @@ def _get_graph_data(specs_dir: Path) -> dict[str, Any]:
                 "file_path": node.file_path,
                 "depends_on": node.depends_on,
                 "parent": node.parent,
+                "acceptance": node.acceptance,
                 # Rebuilds triggered downstream if this spec changes.
                 "cascade_depth": impact_summary(graph, [node.id])["cascade_depth"],
             }
         )
 
         for dep_id in node.depends_on:
-            payload_edges.append({"source": dep_id, "target": node.id})
+            payload_edges.append({"source": dep_id, "target": node.id, "kind": "depends_on"})
+        if node.parent:
+            payload_edges.append({"source": node.parent, "target": node.id, "kind": "parent"})
 
     return {
         "nodes": payload_nodes,
         "edges": payload_edges,
     }
+
+
+# Shown when running from a source checkout where the UI has not been built.
+PLACEHOLDER = (
+    "<html><body><h1>Specdiff UI not built yet.</h1>"
+    "<p>Run <code>npm ci && npm run build</code> in the ui/ directory. "
+    "The graph data is available at <a href='/api/graph'>/api/graph</a>.</p></body></html>"
+)
 
 
 class GraphUIHandler(SimpleHTTPRequestHandler):
@@ -77,8 +87,16 @@ class GraphUIHandler(SimpleHTTPRequestHandler):
             self.wfile.write(body)
             return
 
-        # Fallback to serving static files (e.g. index.html) for React Router
-        path_in_dir = Path(self.directory) / self.path.lstrip("/")
+        if not (Path(self.directory) / "index.html").exists():
+            body = PLACEHOLDER.encode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-type", "text/html")
+            self.end_headers()
+            self.wfile.write(body)
+            return
+
+        # Unknown paths get index.html so the single-page app can handle them.
+        path_in_dir = Path(self.directory) / self.path.split("?", 1)[0].lstrip("/")
         if not path_in_dir.exists() and self.path != "/":
             self.path = "/index.html"
 
@@ -88,16 +106,7 @@ class GraphUIHandler(SimpleHTTPRequestHandler):
 def serve_ui(specs_dir: Path, port: int = 8000, open_browser: bool = True):
     """Start local web server for the Specdiff UI."""
 
-    # We will bundle the compiled UI into src/specdiff/ui_dist
     ui_dist_dir = Path(__file__).parent / "ui_dist"
-
-    if not ui_dist_dir.exists():
-        os.makedirs(ui_dist_dir, exist_ok=True)
-        placeholder = (
-            "<html><body><h1>Specdiff UI not built yet.</h1>"
-            "<p>Run npm run build in the ui/ directory.</p></body></html>"
-        )
-        (ui_dist_dir / "index.html").write_text(placeholder)
 
     def handler(*args, **kwargs):
         return GraphUIHandler(*args, directory=str(ui_dist_dir), specs_dir=specs_dir, **kwargs)
