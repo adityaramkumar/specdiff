@@ -73,7 +73,7 @@ Default model is `gemini-2.5-flash`.
 - `SpecdiffConfig` — all config fields above
 - `HashMap` — node_id → `HashMapEntry` (spec_hash, generated_files, generated_at, output_hashes, inputs). `output_hashes` lets `hashmap.modified_files()` detect hand edits; `inputs` records what the build depended on (see `plan.py`).
 
-### CLI Commands (`cli.py`)
+### CLI Commands (`cli/`: one module per area, shared loading in `cli/common.py`)
 
 - `build [node_id]` — generate code for stale specs (with `node_id`: that node plus its stale prerequisites); `--no-review` skips review stage; `--dry-run` previews stale nodes without invoking LLM; `--force` overwrites generated files edited by hand
 - `status` — show staleness per node (new/stale/current) and why
@@ -82,7 +82,8 @@ Default model is `gemini-2.5-flash`.
 - `review [node_id]` — run Spec Agent and write proposed revisions to `.specdiff/proposed/`
 - `clean [node_id]` — delete generated files and hash map entries, forcing a full rebuild
 - `ui [--port] [--no-browser]` — launch React+Vite graph visualization via `api.py`
-- `init` — scaffold `.specdiff/` with `config.yaml`, default skill files, and an example spec
+- `init` — scaffold `.specdiff/` with `config.yaml`, a skills README, and an example spec
+- `skill NAME` — print the effective skill (override or built-in) so it can be copied and edited
 - `extract [--source .] [--granularity auto|file]` — reverse-engineer existing code into `.spec.md` files
 
 ### React UI (`ui/` + `api.py`)

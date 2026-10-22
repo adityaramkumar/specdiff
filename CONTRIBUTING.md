@@ -31,7 +31,7 @@ All changes must pass CI (lint + tests) before merging.
 
 ```
 src/specdiff/
-  cli.py            # Click CLI commands
+  cli/              # Click commands, one module per area
   config.py         # .specdiff/config.yaml loader
   parser.py         # Spec file parser (frontmatter + SHA-256 hashing)
   graph.py          # Spec graph: depends_on and parent edges, topological sort
