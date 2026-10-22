@@ -156,6 +156,19 @@ class TestRunPipelineCustom:
 
 
 class TestBuildPrompt:
+    def test_parent_specs_precede_own_spec(self):
+        root = SpecNode(
+            id="constitution",
+            version="1",
+            status="approved",
+            hash="h",
+            content="All errors are JSON.",
+            file_path="c.spec.md",
+        )
+        prompt = _build_prompt(_make_node(), ancestor_specs=[root])
+        assert "--- PARENT SPEC: constitution ---\nAll errors are JSON." in prompt
+        assert prompt.index("PARENT SPEC") < prompt.index("SPEC CONTENT")
+
     def test_includes_language(self):
         prompt = _build_prompt(_make_node(), language="typescript")
         assert "Language: typescript" in prompt

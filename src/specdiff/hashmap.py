@@ -37,25 +37,24 @@ def save(specs_dir: Path, hm: HashMap) -> None:
     os.replace(tmp_path, path)
 
 
-def is_stale(hm: HashMap, node_id: str, current_hash: str) -> bool:
-    """True if the node is missing from the map or its hash has changed."""
-    entry = hm.nodes.get(node_id)
-    if entry is None:
-        return True
-    return entry.spec_hash != current_hash
-
-
 def file_hash(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
-def update(hm: HashMap, node_id: str, spec_hash: str, generated_files: list[str]) -> None:
+def update(
+    hm: HashMap,
+    node_id: str,
+    spec_hash: str,
+    generated_files: list[str],
+    inputs: dict[str, str] | None = None,
+) -> None:
     """Upsert a hash map entry, recording the current content hash of each generated file."""
     hm.nodes[node_id] = HashMapEntry(
         spec_hash=spec_hash,
         generated_files=generated_files,
         generated_at=datetime.now(timezone.utc).isoformat(),
         output_hashes={f: file_hash(Path(f)) for f in generated_files if Path(f).exists()},
+        inputs=inputs or {},
     )
 
 

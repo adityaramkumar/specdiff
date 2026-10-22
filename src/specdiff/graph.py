@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections import defaultdict, deque
+from collections.abc import Iterable
 from dataclasses import dataclass, field
 
 from specdiff.types import SpecNode
@@ -9,66 +10,68 @@ from specdiff.types import SpecNode
 @dataclass
 class SpecGraph:
     nodes: dict[str, SpecNode] = field(default_factory=dict)
+    # Reverse edges: prerequisite id -> ids that depend on it or are its children.
     dependents: dict[str, list[str]] = field(default_factory=lambda: defaultdict(list))
 
 
-def build_graph(nodes: list[SpecNode]) -> SpecGraph:
-    """Build a dependency graph from spec nodes.
+def prerequisites(node: SpecNode) -> list[str]:
+    """Nodes whose content feeds into this one: its dependencies and its parent."""
+    return [*node.depends_on, *([node.parent] if node.parent else [])]
 
-    Raises ValueError if any depends_on target or parent reference does not exist,
-    or if a child contradicts a parent's frontmatter fields.
+
+def build_graph(nodes: list[SpecNode]) -> SpecGraph:
+    """Build a graph from spec nodes.
+
+    Raises ValueError for duplicate IDs, missing depends_on or parent targets,
+    a child that is unlocked under a locked parent, or a cycle.
     """
     graph = SpecGraph()
-    graph.nodes = {n.id: n for n in nodes}
+    for node in nodes:
+        if node.id in graph.nodes:
+            raise ValueError(
+                f"Duplicate spec ID '{node.id}': {node.file_path} and "
+                f"{graph.nodes[node.id].file_path}"
+            )
+        graph.nodes[node.id] = node
 
     for node in nodes:
         for dep_id in node.depends_on:
             if dep_id not in graph.nodes:
                 raise ValueError(f"{node.id} depends on {dep_id}, but that spec does not exist.")
-            graph.dependents[dep_id].append(node.id)
+        if node.parent is not None:
+            if node.parent not in graph.nodes:
+                raise ValueError(
+                    f"{node.id} declares parent '{node.parent}', but that spec does not exist."
+                )
+            parent = graph.nodes[node.parent]
+            if parent.status == "locked" and node.status != "locked":
+                raise ValueError(
+                    f"{node.id} has status '{node.status}' but parent "
+                    f"'{parent.id}' is locked — unlock the parent first."
+                )
+        for prereq in prerequisites(node):
+            graph.dependents[prereq].append(node.id)
 
-    _validate_parents(graph)
-
+    topo_sort(graph, graph.nodes)
     return graph
 
 
-def _validate_parents(graph: SpecGraph) -> None:
-    """Check that parent references exist and children don't contradict parent fields."""
-    for node in graph.nodes.values():
-        if node.parent is None:
-            continue
-        if node.parent not in graph.nodes:
-            raise ValueError(
-                f"{node.id} declares parent '{node.parent}', but that spec does not exist."
-            )
-        parent = graph.nodes[node.parent]
-        if parent.status == "locked" and node.status != "locked":
-            raise ValueError(
-                f"{node.id} has status '{node.status}' but parent "
-                f"'{parent.id}' is locked — unlock the parent first."
-            )
+def topo_sort(graph: SpecGraph, node_ids: Iterable[str]) -> list[str]:
+    """Return node_ids with prerequisites first. Ties keep ID order for stable output.
 
-
-def topo_sort(graph: SpecGraph, node_ids: list[str]) -> list[str]:
-    """Return node_ids in topological order (dependencies before dependents).
-
-    Raises ValueError on circular dependencies.
+    Raises ValueError on a cycle.
     """
     id_set = set(node_ids)
-
-    in_degree: dict[str, int] = {nid: 0 for nid in id_set}
-    for nid in id_set:
-        for dep_id in graph.nodes[nid].depends_on:
-            if dep_id in id_set:
-                in_degree[nid] += 1
-
-    queue = deque(nid for nid, deg in in_degree.items() if deg == 0)
+    in_degree = {
+        nid: sum(1 for p in prerequisites(graph.nodes[nid]) if p in id_set) for nid in id_set
+    }
+    queue = deque(sorted(nid for nid, deg in in_degree.items() if deg == 0))
     result: list[str] = []
 
     while queue:
         nid = queue.popleft()
         result.append(nid)
-        for dependent in graph.dependents.get(nid, []):
+        for dependent in sorted(graph.dependents.get(nid, [])):
             if dependent in in_degree:
                 in_degree[dependent] -= 1
                 if in_degree[dependent] == 0:
@@ -77,70 +80,34 @@ def topo_sort(graph: SpecGraph, node_ids: list[str]) -> list[str]:
     if len(result) != len(id_set):
         remaining = id_set - set(result)
         raise ValueError(f"Circular dependency detected among: {', '.join(sorted(remaining))}")
-
     return result
 
 
-def _collect_downstream(graph: SpecGraph, start_ids: set[str]) -> set[str]:
-    """Walk dependents transitively to collect all downstream nodes."""
-    visited: set[str] = set()
-    queue = deque(start_ids)
+def upstream(graph: SpecGraph, start_ids: Iterable[str]) -> set[str]:
+    """All transitive prerequisites of start_ids, excluding start_ids themselves."""
+    start = set(start_ids)
+    seen: set[str] = set()
+    queue = deque(start)
     while queue:
-        nid = queue.popleft()
-        if nid in visited:
-            continue
-        visited.add(nid)
-        for dep in graph.dependents.get(nid, []):
-            if dep not in visited:
-                queue.append(dep)
-    return visited
+        for prereq in prerequisites(graph.nodes[queue.popleft()]):
+            if prereq not in seen:
+                seen.add(prereq)
+                queue.append(prereq)
+    return seen - start
 
 
-def _collect_stale_upstream(
-    graph: SpecGraph,
-    start_ids: set[str],
-    stale_ids: set[str],
-) -> set[str]:
-    """Walk upstream transitively to include stale dependencies."""
-    visited: set[str] = set()
-    queue = deque(start_ids)
-
-    while queue:
-        nid = queue.popleft()
-        for dep_id in graph.nodes[nid].depends_on:
-            if dep_id not in stale_ids or dep_id in visited:
-                continue
-            visited.add(dep_id)
-            queue.append(dep_id)
-
-    return visited
-
-
-def cascade(
-    graph: SpecGraph,
-    changed_ids: list[str],
-    stale_ids: set[str] | None = None,
-) -> list[str]:
-    """Compute the full rebuild set for a list of changed nodes.
-
-    Walks downstream (dependents) from changed nodes, and also walks upstream
-    to include any stale dependencies. Returns everything in topological order.
-    """
-    all_ids = set(changed_ids)
-
-    if stale_ids is not None:
-        all_ids |= _collect_stale_upstream(graph, all_ids, stale_ids)
-
-    downstream = _collect_downstream(graph, all_ids)
-    all_ids |= downstream
-
-    return topo_sort(graph, list(all_ids))
+def ancestors(graph: SpecGraph, node_id: str) -> list[SpecNode]:
+    """The parent chain of node_id, root first."""
+    chain: list[SpecNode] = []
+    parent = graph.nodes[node_id].parent
+    while parent is not None:
+        chain.append(graph.nodes[parent])
+        parent = graph.nodes[parent].parent
+    return list(reversed(chain))
 
 
 def impact_summary(graph: SpecGraph, changed_ids: list[str]) -> dict:
-    """Return a structured summary of the cascade impact."""
-    downstream = _collect_downstream(graph, set(changed_ids)) - set(changed_ids)
-
+    """Return the downstream nodes of changed_ids with their cascade depth."""
     depths: dict[str, int] = {}
     queue = deque((nid, 0) for nid in changed_ids)
     visited: set[str] = set(changed_ids)
@@ -152,11 +119,9 @@ def impact_summary(graph: SpecGraph, changed_ids: list[str]) -> dict:
                 depths[dep] = depth + 1
                 queue.append((dep, depth + 1))
 
-    max_depth = max(depths.values()) if depths else 0
-
     return {
         "changed": changed_ids,
-        "downstream": {nid: depths.get(nid, 0) for nid in sorted(downstream)},
-        "cascade_depth": max_depth,
-        "total": len(changed_ids) + len(downstream),
+        "downstream": dict(sorted(depths.items())),
+        "cascade_depth": max(depths.values(), default=0),
+        "total": len(changed_ids) + len(depths),
     }

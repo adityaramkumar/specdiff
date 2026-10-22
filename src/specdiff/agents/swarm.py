@@ -173,7 +173,13 @@ def _build_prompt(
     language: str = "python",
     test_framework: str | None = None,
     prior_critique: str | None = None,
+    ancestor_specs: list[SpecNode] | None = None,
 ) -> str:
+    # Parent specs set constraints the node inherits, so they come before its own spec.
+    parent_context = "".join(
+        f"--- PARENT SPEC: {a.id} ---\n{a.content}\n--- END PARENT SPEC ---\n"
+        for a in ancestor_specs or []
+    )
     dep_context = ""
     for dep in dep_specs or []:
         dep_context += (
@@ -201,6 +207,7 @@ def _build_prompt(
         f"Version: {node.version}\n"
         f"Language: {language}\n"
         f"{framework_line}\n"
+        f"{parent_context}"
         f"--- SPEC CONTENT ---\n{node.content}\n--- END SPEC ---\n"
         f"{dep_context}"
         f"{critique_section}"
@@ -242,6 +249,7 @@ def run_swarm(
     dep_specs: list[SpecNode] | None = None,
     dep_generated: dict[str, str] | None = None,
     prior_critique: str | None = None,
+    ancestor_specs: list[SpecNode] | None = None,
 ) -> SwarmResult:
     """Run one attempt of the multi-agent swarm for a single spec node."""
     skills = discover_skills(specs_dir)
@@ -260,6 +268,7 @@ def run_swarm(
         language=language,
         test_framework=config.test_framework,
         prior_critique=prior_critique,
+        ancestor_specs=ancestor_specs,
     )
 
     provider_name, _ = detect_provider(config.model)

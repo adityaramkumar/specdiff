@@ -53,28 +53,6 @@ class TestSave:
         assert "hash-map.json.tmp" not in names
 
 
-class TestIsStale:
-    def test_new_node(self):
-        m = HashMap()
-        assert hashmap.is_stale(m, "new/node", "somehash") is True
-
-    def test_changed_hash(self):
-        m = HashMap(
-            nodes={
-                "a": HashMapEntry(spec_hash="old", generated_files=[], generated_at=""),
-            }
-        )
-        assert hashmap.is_stale(m, "a", "new") is True
-
-    def test_current(self):
-        m = HashMap(
-            nodes={
-                "a": HashMapEntry(spec_hash="same", generated_files=[], generated_at=""),
-            }
-        )
-        assert hashmap.is_stale(m, "a", "same") is False
-
-
 class TestUpdate:
     def test_upsert(self):
         m = HashMap()

@@ -10,8 +10,10 @@ from pathlib import Path
 from typing import Any
 
 from specdiff import hashmap
+from specdiff.config import load_config
 from specdiff.graph import build_graph, impact_summary
 from specdiff.parser import discover_specs
+from specdiff.plan import compute_states, skills_hash
 
 logger = logging.getLogger(__name__)
 
@@ -21,44 +23,31 @@ def _get_graph_data(specs_dir: Path) -> dict[str, Any]:
     map_data = hashmap.load(specs_dir)
     nodes = discover_specs(specs_dir)
     graph = build_graph(nodes)
-
-    stale_ids = [n.id for n in nodes if hashmap.is_stale(map_data, n.id, n.hash)]
-    # Pre-compute impact for stale specs to get cascade depths
-    impact = impact_summary(graph, stale_ids) if stale_ids else {"downstream": {}}
-    downstream_depths = impact.get("downstream", {})
+    states = compute_states(graph, map_data, load_config(specs_dir), skills_hash(specs_dir))
 
     payload_nodes = []
     payload_edges = []
 
     for node in nodes:
-        entry = map_data.nodes.get(node.id)
-        if entry is None:
-            status = "new"
-        elif entry.spec_hash != node.hash:
-            status = "stale"
-        else:
-            status = "current"
-
+        state = states[node.id]
         payload_nodes.append(
             {
                 "id": node.id,
                 "version": node.version,
-                "status": status,
+                "status": state.label,
+                "stale_reasons": state.reasons,
                 "approval_status": node.status,
                 "content": node.content,
                 "file_path": node.file_path,
                 "depends_on": node.depends_on,
-                "cascade_depth": downstream_depths.get(node.id, 0),
+                "parent": node.parent,
+                # Rebuilds triggered downstream if this spec changes.
+                "cascade_depth": impact_summary(graph, [node.id])["cascade_depth"],
             }
         )
 
         for dep_id in node.depends_on:
-            payload_edges.append(
-                {
-                    "source": dep_id,
-                    "target": node.id,
-                }
-            )
+            payload_edges.append({"source": dep_id, "target": node.id})
 
     return {
         "nodes": payload_nodes,
@@ -84,7 +73,6 @@ class GraphUIHandler(SimpleHTTPRequestHandler):
                 self.send_response(500)
 
             self.send_header("Content-type", "application/json")
-            self.send_header("Access-Control-Allow-Origin", "*")
             self.end_headers()
             self.wfile.write(body)
             return
@@ -114,7 +102,7 @@ def serve_ui(specs_dir: Path, port: int = 8000, open_browser: bool = True):
     def handler(*args, **kwargs):
         return GraphUIHandler(*args, directory=str(ui_dist_dir), specs_dir=specs_dir, **kwargs)
 
-    httpd = HTTPServer(("0.0.0.0", port), handler)
+    httpd = HTTPServer(("127.0.0.1", port), handler)
     url = f"http://localhost:{port}"
 
     print(f"Starting Specdiff Graph UI Server at {url}")

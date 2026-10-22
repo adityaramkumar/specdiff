@@ -134,38 +134,37 @@ Use `--dry-run` to preview the full build plan (nodes, order, reason) without in
 $ specdiff build --dry-run
 Would build 3 node(s) in this order:
 
-  1. contracts/api/users  [stale]
-  2. behaviors/auth/login  [stale, depends on contracts/api/users]
-  3. behaviors/auth/signup  [cascade, depends on contracts/api/users]
+  1. contracts/api/users  [spec changed]
+  2. behaviors/auth/login  [contracts/api/users changed]
+  3. behaviors/auth/signup  [contracts/api/users changed]
 ```
 
 ### `specdiff status`
 
-Show which specs are current, stale, or new.
+Show which specs are current, stale, or new, and why. A node is stale when anything that shaped its code changed: its own spec, a dependency or parent spec (transitively), the skill files, or the model/language/test settings.
 
 ```
 $ specdiff status
-Node ID                             Status     Version
-------------------------------------------------------------
-contracts/api/users                 current    1.0.0
-behaviors/auth/login                current    1.0.0
-behaviors/auth/signup               stale      1.0.0
+Node ID                             Status     Version    Why
+--------------------------------------------------------------------------------
+contracts/api/users                 stale      1.0.1      spec changed
+behaviors/auth/login                stale      1.0.0      contracts/api/users changed
+behaviors/auth/signup               current    1.0.0
 ```
+
+Specs with `status: draft` are never built, and neither is anything downstream of a stale draft.
 
 ### `specdiff impact [node_id]`
 
-Preview the blast radius of pending changes before building -- no API calls, no generation.
+Preview what a build would touch -- no API calls, no generation. With `node_id`, show the blast radius of changing that spec.
 
 ```
-$ specdiff impact
-Stale spec nodes:
-  contracts/api/users
+$ specdiff impact contracts/api/users
+Changing contracts/api/users rebuilds:
+  behaviors/auth/login                (cascade depth 1)
+  behaviors/auth/signup               (cascade depth 1)
 
-Downstream nodes affected:
-  behaviors/auth/login              (cascade depth 1)
-  behaviors/auth/signup             (cascade depth 1)
-
-Total: 3 node(s) will be rebuilt
+Total: 3 node(s)
 ```
 
 ### `specdiff review [node_id]`
