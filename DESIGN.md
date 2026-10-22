@@ -2,7 +2,7 @@
 
 > Specdiff turns software development into a compilation problem.
 >
-> Note: this document describes the target architecture. The current implementation covers spec parsing, dependency graphs, incremental rebuild tracking, `build`/`status`/`impact`/`review`/`extract` commands, a four-stage swarm (Architect → Interface Planner → Implementation ‖ Testing → Review), automatic retry with critique feedback, dependency code context in generation prompts, rollback on failing tests, and user-customisable skill files. Independent test specs, reconciler/migration agents, reverse-patch debugging, version-history edges, and user-defined agents are still future work.
+> Note: this document describes the target architecture. Implemented today: spec parsing; a graph where `depends_on` and `parent` are both prerequisite edges; fingerprinted incremental builds that explain why a spec is stale; `build`/`status`/`impact`/`validate`/`review`/`clean`/`extract`; a per-spec pipeline (plan → implement ‖ test → deterministic checks → repair → review) whose repair stage is a first version of the Reconciler described below; human-owned acceptance tests, the current form of independent test specs; hand-edit detection; per-spec commit and rollback; and built-in, overridable skills. Still future work: Markdown test specs that generate tests, the Migration agent, reverse-patch debugging, version-history edges, and user-defined agents. See [docs/example-audit.md](docs/example-audit.md) for the evidence behind the current pipeline's design.
 
 ```
 spec → compile → system

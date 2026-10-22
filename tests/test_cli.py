@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+from contextlib import contextmanager
 from pathlib import Path
 from unittest.mock import patch
 
@@ -12,6 +13,17 @@ from specdiff.types import ReviewResult
 from tests.fake_llm import FakeLLM
 
 LLM = "specdiff.agents.stages.complete"
+
+
+@contextmanager
+def _in_dir(path: Path):
+    """Run a block from path and restore the working directory afterwards."""
+    previous = os.getcwd()
+    os.chdir(path)
+    try:
+        yield
+    finally:
+        os.chdir(previous)
 
 
 def _write_spec(
@@ -65,7 +77,7 @@ class TestStatus:
     def test_no_specs(self, tmp_path):
         proj = _setup_project(tmp_path, [])
         runner = CliRunner()
-        with runner.isolated_filesystem(temp_dir=tmp_path):
+        with _in_dir(tmp_path):
             os.chdir(proj)
             result = runner.invoke(cli, ["status"], catch_exceptions=False)
         assert result.exit_code == 0, result.output
@@ -77,7 +89,7 @@ class TestStatus:
             [{"path": "behaviors/auth/login.spec.md", "id": "auth/login"}],
         )
         runner = CliRunner()
-        with runner.isolated_filesystem(temp_dir=tmp_path):
+        with _in_dir(tmp_path):
             os.chdir(proj)
             result = runner.invoke(cli, ["status"], catch_exceptions=False)
         assert result.exit_code == 0, result.output
@@ -99,7 +111,7 @@ class TestStatus:
         (proj / ".specdiff" / "hash-map.json").write_text(json.dumps(hm_data))
 
         runner = CliRunner()
-        with runner.isolated_filesystem(temp_dir=tmp_path):
+        with _in_dir(tmp_path):
             os.chdir(proj)
             result = runner.invoke(cli, ["status"], catch_exceptions=False)
         assert result.exit_code == 0, result.output
@@ -117,7 +129,7 @@ class TestStatus:
         (proj / ".specdiff" / "hash-map.json").write_text(json.dumps(hm_data))
 
         runner = CliRunner()
-        with runner.isolated_filesystem(temp_dir=tmp_path):
+        with _in_dir(tmp_path):
             os.chdir(proj)
             result = runner.invoke(cli, ["status"], catch_exceptions=False)
         assert result.exit_code == 0, result.output
@@ -128,7 +140,7 @@ class TestBuild:
     def test_no_specs(self, tmp_path):
         proj = _setup_project(tmp_path, [])
         runner = CliRunner()
-        with runner.isolated_filesystem(temp_dir=tmp_path):
+        with _in_dir(tmp_path):
             os.chdir(proj)
             result = runner.invoke(cli, ["build"], catch_exceptions=False)
         assert result.exit_code == 0
@@ -140,7 +152,7 @@ class TestBuild:
             [{"path": "behaviors/auth/login.spec.md", "id": "auth/login"}],
         )
         runner = CliRunner()
-        with runner.isolated_filesystem(temp_dir=tmp_path):
+        with _in_dir(tmp_path):
             os.chdir(proj)
             result = runner.invoke(cli, ["build", "nonexistent/spec"])
         assert result.exit_code != 0
@@ -155,7 +167,7 @@ class TestBuild:
             ],
         )
         runner = CliRunner()
-        with runner.isolated_filesystem(temp_dir=tmp_path):
+        with _in_dir(tmp_path):
             os.chdir(proj)
             result = runner.invoke(cli, ["build", "auth/login"], catch_exceptions=False)
         assert result.exit_code == 0, result.output
@@ -168,13 +180,13 @@ class TestBuild:
         )
         fake_llm.reply("auth/login", "review", "<verdict>fail</verdict><feedback>x</feedback>")
         runner = CliRunner()
-        with runner.isolated_filesystem(temp_dir=tmp_path):
+        with _in_dir(tmp_path):
             os.chdir(proj)
             result = runner.invoke(cli, ["build", "--no-review"], catch_exceptions=False)
         assert result.exit_code == 0, result.output
         assert "review" not in fake_llm.stages("auth/login")
 
-    @patch("specdiff.cli.review_spec", side_effect=_mock_review_fail)
+    @patch("specdiff.cli.build_cmd.review_spec", side_effect=_mock_review_fail)
     def test_build_review_before_build_aborts_on_fail(self, mock_review, tmp_path):
         proj = _setup_project(
             tmp_path,
@@ -188,7 +200,7 @@ class TestBuild:
             "review_before_build: true\n"
         )
         runner = CliRunner()
-        with runner.isolated_filesystem(temp_dir=tmp_path):
+        with _in_dir(tmp_path):
             os.chdir(proj)
             result = runner.invoke(cli, ["build"])
         assert result.exit_code != 0
@@ -200,7 +212,7 @@ class TestBuild:
             [{"path": "behaviors/auth/login.spec.md", "id": "auth/login"}],
         )
         runner = CliRunner()
-        with runner.isolated_filesystem(temp_dir=tmp_path):
+        with _in_dir(tmp_path):
             os.chdir(proj)
             result = runner.invoke(cli, ["build"], catch_exceptions=False)
 
@@ -218,7 +230,7 @@ class TestBuild:
             [{"path": "behaviors/auth/login.spec.md", "id": "auth/login"}],
         )
         runner = CliRunner()
-        with runner.isolated_filesystem(temp_dir=tmp_path):
+        with _in_dir(tmp_path):
             os.chdir(proj)
             runner.invoke(cli, ["build"], catch_exceptions=False)
             result = runner.invoke(cli, ["build"], catch_exceptions=False)
@@ -238,7 +250,7 @@ class TestBuild:
             '<file path="auth/login.ts">\nexport function login() {}\n</file>',
         )
         runner = CliRunner()
-        with runner.isolated_filesystem(temp_dir=tmp_path):
+        with _in_dir(tmp_path):
             os.chdir(proj)
             result = runner.invoke(cli, ["build"], catch_exceptions=False)
 
@@ -254,7 +266,7 @@ class TestBuild:
         fail = "<verdict>fail</verdict><feedback>missing lockout</feedback>"
         fake_llm.reply("auth/login", "review", fail, fail, fail)
         runner = CliRunner()
-        with runner.isolated_filesystem(temp_dir=tmp_path):
+        with _in_dir(tmp_path):
             os.chdir(proj)
             result = runner.invoke(cli, ["build"])
 
@@ -280,7 +292,7 @@ class TestBuildDryRun:
             ],
         )
         runner = CliRunner()
-        with runner.isolated_filesystem(temp_dir=tmp_path):
+        with _in_dir(tmp_path):
             os.chdir(proj)
             result = runner.invoke(cli, ["build", "--dry-run"], catch_exceptions=False)
 
@@ -311,7 +323,7 @@ class TestBuildDryRun:
         (proj / ".specdiff" / "hash-map.json").write_text(json.dumps(hm_data))
 
         runner = CliRunner()
-        with runner.isolated_filesystem(temp_dir=tmp_path):
+        with _in_dir(tmp_path):
             os.chdir(proj)
             result = runner.invoke(cli, ["build", "--dry-run"], catch_exceptions=False)
 
@@ -331,7 +343,7 @@ class TestBuildDryRun:
         (proj / ".specdiff" / "hash-map.json").write_text(json.dumps(hm_data))
 
         runner = CliRunner()
-        with runner.isolated_filesystem(temp_dir=tmp_path):
+        with _in_dir(tmp_path):
             os.chdir(proj)
             result = runner.invoke(cli, ["build", "--dry-run"], catch_exceptions=False)
         assert result.exit_code == 0
@@ -345,7 +357,7 @@ class TestBuildDryRun:
         runner = CliRunner()
         with (
             patch(LLM) as mock_llm,
-            runner.isolated_filesystem(temp_dir=tmp_path),
+            _in_dir(tmp_path),
         ):
             os.chdir(proj)
             runner.invoke(cli, ["build", "--dry-run"], catch_exceptions=False)
@@ -356,7 +368,7 @@ class TestImpact:
     def test_no_specs(self, tmp_path):
         proj = _setup_project(tmp_path, [])
         runner = CliRunner()
-        with runner.isolated_filesystem(temp_dir=tmp_path):
+        with _in_dir(tmp_path):
             os.chdir(proj)
             result = runner.invoke(cli, ["impact"], catch_exceptions=False)
         assert result.exit_code == 0
@@ -371,7 +383,7 @@ class TestImpact:
             ],
         )
         runner = CliRunner()
-        with runner.isolated_filesystem(temp_dir=tmp_path):
+        with _in_dir(tmp_path):
             os.chdir(proj)
             result = runner.invoke(cli, ["impact", "contracts/schema"], catch_exceptions=False)
         assert result.exit_code == 0
@@ -389,7 +401,7 @@ class TestImpact:
         (proj / ".specdiff" / "hash-map.json").write_text(json.dumps(hm_data))
 
         runner = CliRunner()
-        with runner.isolated_filesystem(temp_dir=tmp_path):
+        with _in_dir(tmp_path):
             os.chdir(proj)
             result = runner.invoke(cli, ["impact", "auth/login"], catch_exceptions=False)
         assert result.exit_code == 0
@@ -420,7 +432,7 @@ class TestImpact:
         (proj / ".specdiff" / "hash-map.json").write_text(json.dumps(hm_data))
 
         runner = CliRunner()
-        with runner.isolated_filesystem(temp_dir=tmp_path):
+        with _in_dir(tmp_path):
             os.chdir(proj)
             result = runner.invoke(cli, ["impact"], catch_exceptions=False)
 
@@ -440,7 +452,7 @@ class TestImpact:
         (proj / ".specdiff" / "hash-map.json").write_text(json.dumps(hm_data))
 
         runner = CliRunner()
-        with runner.isolated_filesystem(temp_dir=tmp_path):
+        with _in_dir(tmp_path):
             os.chdir(proj)
             result = runner.invoke(cli, ["impact"], catch_exceptions=False)
 
@@ -452,7 +464,7 @@ class TestReview:
     def test_no_specs(self, tmp_path):
         proj = _setup_project(tmp_path, [], with_skill=True)
         runner = CliRunner()
-        with runner.isolated_filesystem(temp_dir=tmp_path):
+        with _in_dir(tmp_path):
             os.chdir(proj)
             result = runner.invoke(cli, ["review"], catch_exceptions=False)
         assert result.exit_code == 0
@@ -465,7 +477,7 @@ class TestReview:
             with_skill=True,
         )
         runner = CliRunner()
-        with runner.isolated_filesystem(temp_dir=tmp_path):
+        with _in_dir(tmp_path):
             os.chdir(proj)
             result = runner.invoke(cli, ["review"], catch_exceptions=False)
         assert result.exit_code == 0
@@ -479,7 +491,7 @@ class TestReview:
         )
         _write_spec(proj / ".specdiff", "behaviors/login.spec.md", "auth/login", status="draft")
         runner = CliRunner()
-        with runner.isolated_filesystem(temp_dir=tmp_path):
+        with _in_dir(tmp_path):
             os.chdir(proj)
             result = runner.invoke(cli, ["review"])
         assert result.exit_code != 0
@@ -491,13 +503,13 @@ class TestReview:
             with_skill=True,
         )
         runner = CliRunner()
-        with runner.isolated_filesystem(temp_dir=tmp_path):
+        with _in_dir(tmp_path):
             os.chdir(proj)
             result = runner.invoke(cli, ["review", "nonexistent/spec"])
         assert result.exit_code != 0
         assert "not found" in result.output
 
-    @patch("specdiff.cli.review_spec", side_effect=_mock_review_pass)
+    @patch("specdiff.cli.review_cmd.review_spec", side_effect=_mock_review_pass)
     def test_review_single_node_id(self, mock_review, tmp_path):
         proj = _setup_project(
             tmp_path,
@@ -511,13 +523,13 @@ class TestReview:
         _write_spec(proj / ".specdiff", "behaviors/signup.spec.md", "auth/signup", status="draft")
 
         runner = CliRunner()
-        with runner.isolated_filesystem(temp_dir=tmp_path):
+        with _in_dir(tmp_path):
             os.chdir(proj)
             result = runner.invoke(cli, ["review", "auth/login"], catch_exceptions=False)
         assert result.exit_code == 0
         assert mock_review.call_count == 1
 
-    @patch("specdiff.cli.review_spec", side_effect=_mock_review_pass)
+    @patch("specdiff.cli.review_cmd.review_spec", side_effect=_mock_review_pass)
     def test_review_pass(self, mock_review, tmp_path):
         proj = _setup_project(
             tmp_path,
@@ -532,14 +544,14 @@ class TestReview:
         )
 
         runner = CliRunner()
-        with runner.isolated_filesystem(temp_dir=tmp_path):
+        with _in_dir(tmp_path):
             os.chdir(proj)
             result = runner.invoke(cli, ["review"], catch_exceptions=False)
 
         assert result.exit_code == 0, result.output
         assert "PASSED" in result.output
 
-    @patch("specdiff.cli.review_spec", side_effect=_mock_review_fail)
+    @patch("specdiff.cli.review_cmd.review_spec", side_effect=_mock_review_fail)
     def test_review_fail_writes_proposal(self, mock_review, tmp_path):
         proj = _setup_project(
             tmp_path,
@@ -554,7 +566,7 @@ class TestReview:
         )
 
         runner = CliRunner()
-        with runner.isolated_filesystem(temp_dir=tmp_path):
+        with _in_dir(tmp_path):
             os.chdir(proj)
             result = runner.invoke(cli, ["review"])
 
@@ -564,7 +576,7 @@ class TestReview:
         proposed = proj / ".specdiff" / "proposed" / "auth_login.spec.md"
         assert proposed.exists()
 
-    @patch("specdiff.cli.review_spec", side_effect=_mock_review_pass)
+    @patch("specdiff.cli.build_cmd.review_spec", side_effect=_mock_review_pass)
     def test_build_reviews_all_stale_specs_when_enabled(self, mock_review, fake_llm, tmp_path):
         proj = _setup_project(
             tmp_path,
@@ -578,7 +590,7 @@ class TestReview:
             "review_before_build: true\n"
         )
         runner = CliRunner()
-        with runner.isolated_filesystem(temp_dir=tmp_path):
+        with _in_dir(tmp_path):
             os.chdir(proj)
             result = runner.invoke(cli, ["build"], catch_exceptions=False)
 
@@ -589,7 +601,7 @@ class TestReview:
 class TestInit:
     def test_creates_directory_structure(self, tmp_path):
         runner = CliRunner()
-        with runner.isolated_filesystem(temp_dir=tmp_path):
+        with _in_dir(tmp_path):
             os.chdir(tmp_path)
             result = runner.invoke(cli, ["init"], catch_exceptions=False)
         assert result.exit_code == 0
@@ -601,14 +613,14 @@ class TestInit:
 
     def test_init_message(self, tmp_path):
         runner = CliRunner()
-        with runner.isolated_filesystem(temp_dir=tmp_path):
+        with _in_dir(tmp_path):
             os.chdir(tmp_path)
             result = runner.invoke(cli, ["init"], catch_exceptions=False)
         assert "Created .specdiff/" in result.output
 
     def test_config_contains_model(self, tmp_path):
         runner = CliRunner()
-        with runner.isolated_filesystem(temp_dir=tmp_path):
+        with _in_dir(tmp_path):
             os.chdir(tmp_path)
             runner.invoke(cli, ["init"], catch_exceptions=False)
         config_text = (tmp_path / ".specdiff" / "config.yaml").read_text()
@@ -617,7 +629,7 @@ class TestInit:
     def test_already_exists_is_noop(self, tmp_path):
         (tmp_path / ".specdiff").mkdir()
         runner = CliRunner()
-        with runner.isolated_filesystem(temp_dir=tmp_path):
+        with _in_dir(tmp_path):
             os.chdir(tmp_path)
             result = runner.invoke(cli, ["init"], catch_exceptions=False)
         assert result.exit_code == 0
@@ -627,7 +639,7 @@ class TestInit:
 class TestExtract:
     def test_not_initialized_exits(self, tmp_path):
         runner = CliRunner()
-        with runner.isolated_filesystem(temp_dir=tmp_path):
+        with _in_dir(tmp_path):
             os.chdir(tmp_path)
             result = runner.invoke(cli, ["extract"], catch_exceptions=False)
         assert result.exit_code == 0
@@ -636,7 +648,7 @@ class TestExtract:
     def test_missing_source_dir_exits_nonzero(self, tmp_path):
         (tmp_path / ".specdiff").mkdir()
         runner = CliRunner()
-        with runner.isolated_filesystem(temp_dir=tmp_path):
+        with _in_dir(tmp_path):
             os.chdir(tmp_path)
             result = runner.invoke(cli, ["extract", "--source", "totally_missing_dir"])
         assert result.exit_code == 1
@@ -650,7 +662,7 @@ class TestClean:
     def test_nothing_to_clean(self, tmp_path):
         proj = _setup_project(tmp_path, [])
         runner = CliRunner()
-        with runner.isolated_filesystem(temp_dir=tmp_path):
+        with _in_dir(tmp_path):
             os.chdir(proj)
             result = runner.invoke(cli, ["clean", "--yes"], catch_exceptions=False)
         assert result.exit_code == 0
@@ -676,7 +688,7 @@ class TestClean:
         )
 
         runner = CliRunner()
-        with runner.isolated_filesystem(temp_dir=tmp_path):
+        with _in_dir(tmp_path):
             os.chdir(proj)
             result = runner.invoke(cli, ["clean", "--yes"], catch_exceptions=False)
 
@@ -715,7 +727,7 @@ class TestClean:
         )
 
         runner = CliRunner()
-        with runner.isolated_filesystem(temp_dir=tmp_path):
+        with _in_dir(tmp_path):
             os.chdir(proj)
             result = runner.invoke(cli, ["clean", "--yes", "auth/login"], catch_exceptions=False)
 
@@ -738,7 +750,7 @@ class TestClean:
             },
         )
         runner = CliRunner()
-        with runner.isolated_filesystem(temp_dir=tmp_path):
+        with _in_dir(tmp_path):
             os.chdir(proj)
             result = runner.invoke(cli, ["clean", "--yes", "nonexistent/node"])
         assert result.exit_code != 0
@@ -757,7 +769,7 @@ class TestClean:
             },
         )
         runner = CliRunner()
-        with runner.isolated_filesystem(temp_dir=tmp_path):
+        with _in_dir(tmp_path):
             os.chdir(proj)
             result = runner.invoke(cli, ["clean", "--yes"], catch_exceptions=False)
         assert result.exit_code == 0
@@ -768,7 +780,7 @@ class TestValidate:
     def test_no_specs(self, tmp_path):
         proj = _setup_project(tmp_path, [])
         runner = CliRunner()
-        with runner.isolated_filesystem(temp_dir=tmp_path):
+        with _in_dir(tmp_path):
             os.chdir(proj)
             result = runner.invoke(cli, ["validate"], catch_exceptions=False)
         assert result.exit_code == 0
@@ -787,7 +799,7 @@ class TestValidate:
             ],
         )
         runner = CliRunner()
-        with runner.isolated_filesystem(temp_dir=tmp_path):
+        with _in_dir(tmp_path):
             os.chdir(proj)
             result = runner.invoke(cli, ["validate"], catch_exceptions=False)
         assert result.exit_code == 0
@@ -806,7 +818,7 @@ class TestValidate:
             ],
         )
         runner = CliRunner()
-        with runner.isolated_filesystem(temp_dir=tmp_path):
+        with _in_dir(tmp_path):
             os.chdir(proj)
             result = runner.invoke(cli, ["validate"])
         assert result.exit_code == 1
@@ -822,7 +834,7 @@ class TestValidate:
             "parent: ghost/parent\n---\n\nSpec body.\n"
         )
         runner = CliRunner()
-        with runner.isolated_filesystem(temp_dir=tmp_path):
+        with _in_dir(tmp_path):
             os.chdir(proj)
             result = runner.invoke(cli, ["validate"])
         assert result.exit_code == 1
@@ -844,7 +856,7 @@ class TestValidate:
             "depends_on:\n  - behaviors/a\n---\n\nSpec B.\n"
         )
         runner = CliRunner()
-        with runner.isolated_filesystem(temp_dir=tmp_path):
+        with _in_dir(tmp_path):
             os.chdir(proj)
             result = runner.invoke(cli, ["validate"])
         assert result.exit_code == 1
@@ -860,7 +872,7 @@ class TestValidate:
                 f"depends_on:\n  - {dep}\n---\n\nSpec {name}.\n"
             )
         runner = CliRunner()
-        with runner.isolated_filesystem(temp_dir=tmp_path):
+        with _in_dir(tmp_path):
             os.chdir(proj)
             result = runner.invoke(cli, ["validate"])
         assert result.exit_code == 1
