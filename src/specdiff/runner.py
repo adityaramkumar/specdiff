@@ -133,6 +133,7 @@ def execute_swarm_cascade(
     specs_dir: Path,
     *,
     skip_review: bool = False,
+    force: bool = False,
 ) -> bool:
     """Build nodes using the multi-agent swarm pipeline."""
     if (specs_dir / BACKUP_DIR).exists():
@@ -140,6 +141,21 @@ def execute_swarm_cascade(
             f"  {specs_dir / BACKUP_DIR} exists from an interrupted build. Copy back any "
             "files you need from it, then delete it before building again.",
             err=True,
+        )
+        return False
+
+    edited = [
+        f
+        for node in ordered_nodes
+        if (entry := hm.nodes.get(node.id))
+        for f in hashmap.modified_files(entry)
+    ]
+    if edited and not force:
+        click.echo("  These generated files were edited by hand since the last build:", err=True)
+        for f in edited:
+            click.echo(f"    {f}", err=True)
+        click.echo(
+            "  Move the change into the spec, or rerun with --force to overwrite it.", err=True
         )
         return False
 

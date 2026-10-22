@@ -124,6 +124,8 @@ Build complete.
 
 If the review agent rejects an implementation, the swarm retries automatically (up to `max_retries` times) with the critique fed back as context. If tests fail after generation, all files are rolled back.
 
+Specdiff records a hash of every file it writes. If you edit a generated file by hand, `build` refuses to overwrite it and lists the edited files (so does `status`). Move the change into the spec, or pass `--force` to overwrite.
+
 Use `--no-review` to skip the review gate and always write the generated output. Use `specdiff build <node_id>` to target a single node.
 
 Use `--dry-run` to preview the full build plan (nodes, order, reason) without invoking any LLM:

@@ -844,3 +844,39 @@ class TestWriteSafety:
         backup(["f.py"], specs_dir)
 
         assert (specs_dir / BACKUP_DIR / "f.py").read_text() == "original"
+
+
+class TestHandEditDetection:
+    def _built(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        specs_dir = tmp_path / ".specdiff"
+        specs_dir.mkdir()
+        node = _make_node()
+        graph = build_graph([node])
+        map_ = HashMap()
+        with patch("specdiff.runner.run_swarm", side_effect=_swarm_ok):
+            assert execute_swarm_cascade([node], SpecdiffConfig(), map_, graph, specs_dir)
+        generated = Path(map_.nodes[node.id].generated_files[0])
+        generated.write_text("# hotfix\n")
+        rebuilt = _make_node(spec_hash="new")
+        return specs_dir, rebuilt, build_graph([rebuilt]), map_, generated
+
+    def test_edited_output_blocks_rebuild(self, tmp_path, monkeypatch):
+        specs_dir, node, graph, map_, generated = self._built(tmp_path, monkeypatch)
+
+        with patch("specdiff.runner.run_swarm") as mock_swarm:
+            ok = execute_swarm_cascade([node], SpecdiffConfig(), map_, graph, specs_dir)
+
+        assert ok is False
+        mock_swarm.assert_not_called()
+        assert generated.read_text() == "# hotfix\n"
+
+    def test_force_overwrites_edited_output(self, tmp_path, monkeypatch):
+        specs_dir, node, graph, map_, generated = self._built(tmp_path, monkeypatch)
+
+        with patch("specdiff.runner.run_swarm", side_effect=_swarm_ok):
+            ok = execute_swarm_cascade([node], SpecdiffConfig(), map_, graph, specs_dir, force=True)
+
+        assert ok is True
+        assert "# hotfix" not in generated.read_text()
+        assert map_.nodes[node.id].spec_hash == "new"

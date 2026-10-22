@@ -21,12 +21,15 @@ class HashMapEntry:
     spec_hash: str
     generated_files: list[str]
     generated_at: str
+    # SHA-256 of each generated file as written, used to detect hand edits.
+    output_hashes: dict[str, str] = field(default_factory=dict)
 
     def to_dict(self) -> dict:
         return {
             "spec_hash": self.spec_hash,
             "generated_files": self.generated_files,
             "generated_at": self.generated_at,
+            "output_hashes": self.output_hashes,
         }
 
     @classmethod
@@ -35,6 +38,7 @@ class HashMapEntry:
             spec_hash=data["spec_hash"],
             generated_files=data["generated_files"],
             generated_at=data["generated_at"],
+            output_hashes=data.get("output_hashes", {}),
         )
 
 

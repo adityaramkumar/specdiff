@@ -77,11 +77,11 @@ Default model is `gemini-2.5-flash`.
 - `SpecNode` — id, version, status, hash, content, file_path, parent, depends_on, language
 - `SpecdiffConfig` — all config fields above
 - `SwarmResult` — file_plan, generated_files, generated_tests, review status
-- `HashMap` — node_id → `HashMapEntry` (spec_hash, generated_files, generated_at)
+- `HashMap` — node_id → `HashMapEntry` (spec_hash, generated_files, generated_at, output_hashes). `output_hashes` lets `hashmap.modified_files()` detect hand edits to generated output.
 
 ### CLI Commands (`cli.py`)
 
-- `build [node_id]` — generate code from specs; `--no-review` skips review stage; `--dry-run` previews stale nodes without invoking LLM
+- `build [node_id]` — generate code from specs; `--no-review` skips review stage; `--dry-run` previews stale nodes without invoking LLM; `--force` overwrites generated files edited by hand
 - `status` — show staleness per node (new/stale/current)
 - `validate` — check graph integrity (no orphaned depends_on, no circular dependencies)
 - `impact [node_id]` — preview cascade blast radius without API calls

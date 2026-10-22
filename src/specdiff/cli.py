@@ -71,7 +71,8 @@ def cli() -> None:
     is_flag=True,
     help="Show what would be built without invoking any LLM",
 )
-def build(node_id: str | None, no_review: bool, dry_run: bool) -> None:
+@click.option("--force", is_flag=True, help="Overwrite generated files that were edited by hand")
+def build(node_id: str | None, no_review: bool, dry_run: bool, force: bool) -> None:
     """Generate code from specs. Optionally target a single NODE_ID."""
     config = _load_config(Path(".specdiff"))
     specs_dir = Path(config.specs_dir)
@@ -143,7 +144,9 @@ def build(node_id: str | None, no_review: bool, dry_run: bool) -> None:
 
     click.echo(f"Building {len(ordered_nodes)} node(s)...\n")
 
-    ok = execute_swarm_cascade(ordered_nodes, config, hm, graph, specs_dir, skip_review=no_review)
+    ok = execute_swarm_cascade(
+        ordered_nodes, config, hm, graph, specs_dir, skip_review=no_review, force=force
+    )
 
     if not ok:
         sys.exit(1)
@@ -175,6 +178,12 @@ def status() -> None:
         else:
             label = "current"
         click.echo(f"{node.id:<35} {label:<10} {node.version}")
+
+    edited = [f for e in hm.nodes.values() for f in hashmap.modified_files(e)]
+    if edited:
+        click.echo("\nGenerated files edited by hand (build needs --force to overwrite):")
+        for f in edited:
+            click.echo(f"  {f}")
 
 
 @cli.command()
@@ -541,6 +550,12 @@ def clean(node_id: str | None, yes: bool) -> None:
         targets = {node_id: hm.nodes[node_id]}
     else:
         targets = dict(hm.nodes)
+
+    edited = [f for e in targets.values() for f in hashmap.modified_files(e)]
+    if edited:
+        click.echo("Warning: these generated files were edited by hand and will be deleted:")
+        for f in edited:
+            click.echo(f"  {f}")
 
     total_files = sum(len(e.generated_files) for e in targets.values())
     prompt = f"Remove {len(targets)} node(s) and {total_files} generated file(s) from the hash map?"
