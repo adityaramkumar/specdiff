@@ -62,7 +62,8 @@ Agent behavior is controlled by Markdown files in `.specdiff/skills/` (e.g., `ar
 ### Traceability & Safety
 
 - Every generated file receives a language-appropriate comment header with its source spec ID, hash, and timestamp (`runner.py:_traceability_header()`).
-- Files are backed up before regeneration (`.specdiff/.backup/`) and restored on test failure.
+- Every file a build will overwrite (generated or hand-written) is backed up to `.specdiff/.backup/` first and restored on failure or interrupt. A leftover `.backup/` means an earlier build died mid-run; `build` refuses to start until it is removed.
+- Agent-supplied paths go through `runner.py:resolve_output_path()`, which rejects anything outside `output_dir`.
 - The `review` CLI command writes proposed spec revisions to `.specdiff/proposed/` without modifying originals.
 
 ### Configuration (`.specdiff/config.yaml`)
