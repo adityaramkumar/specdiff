@@ -176,6 +176,11 @@ body {
   transition: opacity 0.3s ease;
 }
 
+/* Keep React Flow's internal z-indexes (a selected node gets 1000) below the side panel. */
+.react-flow {
+  isolation: isolate;
+}
+
 .highlighted-edge {
   stroke: var(--accent) !important;
   stroke-width: 3 !important;
@@ -196,6 +201,10 @@ body {
 .border-blue-500\/50 { border-color: rgba(59, 130, 246, 0.5); }
 .bg-blue-500\/10 { background-color: rgba(59, 130, 246, 0.05); }
 
+.text-violet-400 { color: #a78bfa; }
+.border-violet-500\/50 { border-color: rgba(139, 92, 246, 0.5); }
+.bg-violet-500\/10 { background-color: rgba(139, 92, 246, 0.05); }
+
 .mr-1 { margin-right: 4px; }
 .mt-6 { margin-top: 24px; }
 
@@ -206,9 +215,8 @@ body {
   right: 0;
   width: 450px;
   height: 100%;
-  background: var(--panel-bg);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
+  /* Opaque so graph nodes behind the panel never compete with its text. */
+  background: rgb(23, 25, 30);
   border-left: 1px solid var(--border-color);
   display: flex;
   flex-direction: column;
@@ -266,6 +274,17 @@ body {
   font-size: 0.75rem;
   font-weight: 500;
   letter-spacing: 0.02em;
+}
+
+.stale-reasons {
+  background: rgba(96, 165, 250, 0.1);
+  border-left: 3px solid #60a5fa;
+  padding: 12px 16px;
+  margin-bottom: 12px;
+  color: #bfdbfe;
+  font-size: 0.85rem;
+  border-radius: 0 4px 4px 0;
+  line-height: 1.5;
 }
 
 .cascade-warning {

@@ -17,14 +17,48 @@ import NodeDetails from './NodeDetails';
 import './index.css';
 
 const nodeTypes = { spec: SpecNode };
+const BASE_POLL_MS = 2000;
+const MAX_POLL_MS = 30000;
+const EDGE_COLOR = '#4B5563';
+const PARENT_EDGE_COLOR = '#8B5CF6';
+
+function toFlow(data) {
+  // Map Backend Nodes -> React Flow Nodes
+  const flowNodes = data.nodes.map(n => ({
+    id: n.id,
+    type: 'spec',
+    position: { x: 0, y: 0 },
+    data: { ...n },
+  }));
+
+  // Dependency edges are solid grey; parent edges (inherited constraints) are dashed violet.
+  const flowEdges = data.edges.map(e => {
+    const color = e.kind === 'parent' ? PARENT_EDGE_COLOR : EDGE_COLOR;
+    return {
+      id: `${e.kind}:${e.source}-${e.target}`,
+      source: e.source,
+      target: e.target,
+      type: 'smoothstep',
+      markerEnd: { type: MarkerType.ArrowClosed, width: 20, height: 20, color },
+      style: {
+        stroke: color,
+        strokeWidth: 2,
+        ...(e.kind === 'parent' && { strokeDasharray: '6 4' }),
+      },
+    };
+  });
+
+  return getLayoutedElements(flowNodes, flowEdges);
+}
 
 export default function App() {
   const [nodes, setNodes] = useState([]);
   const [edges, setEdges] = useState([]);
-  const [selectedNodeData, setSelectedNodeData] = useState(null);
+  const [selectedId, setSelectedId] = useState(null);
   const [hoveredNode, setHoveredNode] = useState(null);
   const [error, setError] = useState(null);
   const prevDataRef = useRef(null);
+  const backoffRef = useRef(BASE_POLL_MS);
 
   // Use a ref polling interval to refresh the graph data every 2 seconds
   useEffect(() => {
@@ -39,41 +73,13 @@ export default function App() {
 
         if (!isMounted) return;
 
-        if (prevDataRef.current && isEqual(prevDataRef.current, data)) {
-          return;
+        // Unchanged data skips re-layout but must still fall through to the next poll.
+        if (!prevDataRef.current || !isEqual(prevDataRef.current, data)) {
+          prevDataRef.current = data;
+          const layouted = toFlow(data);
+          setNodes(layouted.nodes);
+          setEdges(layouted.edges);
         }
-        prevDataRef.current = data;
-
-        // Map Backend Nodes -> React Flow Nodes
-        const flowNodes = data.nodes.map(n => ({
-          id: n.id,
-          type: 'spec',
-          position: { x: 0, y: 0 },
-          data: { ...n },
-        }));
-
-        const flowEdges = data.edges.map(e => ({
-          id: `${e.source}-${e.target}`,
-          source: e.source,
-          target: e.target,
-          type: 'smoothstep',
-          animated: true,
-          markerEnd: {
-            type: MarkerType.ArrowClosed,
-            width: 20,
-            height: 20,
-            color: '#4B5563',
-          },
-          style: { stroke: '#4B5563', strokeWidth: 2 },
-        }));
-
-        const { nodes: layoutedNodes, edges: layoutedEdges } = getLayoutedElements(
-          flowNodes,
-          flowEdges
-        );
-
-        setNodes(layoutedNodes);
-        setEdges(layoutedEdges);
         setError(null);
         backoffRef.current = BASE_POLL_MS;
       } catch (e) {
@@ -105,12 +111,18 @@ export default function App() {
     []
   );
 
+  // Keep only the id so the details panel shows each poll's fresh data.
+  const selectedNodeData = useMemo(
+    () => nodes.find(n => n.id === selectedId)?.data ?? null,
+    [nodes, selectedId]
+  );
+
   const onNodeClick = useCallback((event, node) => {
-    setSelectedNodeData(node.data);
+    setSelectedId(node.id);
   }, []);
 
   const onPaneClick = useCallback(() => {
-    setSelectedNodeData(null);
+    setSelectedId(null);
   }, []);
 
   const onNodeMouseEnter = useCallback((_, node) => setHoveredNode(node.id), []);
@@ -139,7 +151,9 @@ export default function App() {
     return edges.map(e => ({
       ...e,
       className: highlightNodeId ? (e.source === highlightNodeId || e.target === highlightNodeId ? 'highlighted-edge' : 'dimmed-edge') : '',
-      animated: highlightNodeId ? (e.source === highlightNodeId || e.target === highlightNodeId) : true,
+      // React Flow draws animated edges dashed, so only animate highlighted dependency edges.
+      animated: !e.id.startsWith('parent:') && Boolean(highlightNodeId)
+        && (e.source === highlightNodeId || e.target === highlightNodeId),
     }));
   }, [edges, highlightNodeId]);
 
@@ -177,6 +191,7 @@ export default function App() {
               if (n.data?.status === 'current') return '#10b981';
               if (n.data?.status === 'stale') return '#f59e0b';
               if (n.data?.status === 'new') return '#3b82f6';
+              if (n.data?.status === 'context') return '#a78bfa';
               return '#4b5563';
             }}
             maskColor="rgba(15, 17, 21, 0.7)"
@@ -189,7 +204,7 @@ export default function App() {
             <NodeDetails
               key="node-details"
               data={selectedNodeData}
-              onClose={() => setSelectedNodeData(null)}
+              onClose={() => setSelectedId(null)}
             />
           )}
         </AnimatePresence>
