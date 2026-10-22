@@ -16,6 +16,9 @@ class SpecNode:
     language: str | None = None
     # Hand-written test files (paths from the project root) the generated code must pass.
     acceptance: list[str] = field(default_factory=list)
+    # False for context-only specs (a constitution, constraints): never built, but
+    # passed to the specs that depend on or inherit from them.
+    generate: bool = True
 
 
 @dataclass

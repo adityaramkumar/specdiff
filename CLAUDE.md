@@ -84,7 +84,7 @@ Default model is `gemini-2.5-flash`.
 - `ui [--port] [--no-browser]` — launch React+Vite graph visualization via `api.py`
 - `init` — scaffold `.specdiff/` with `config.yaml`, a skills README, and an example spec
 - `skill NAME` — print the effective skill (override or built-in) so it can be copied and edited
-- `extract [--source .] [--granularity auto|file]` — reverse-engineer existing code into `.spec.md` files
+- `extract [--source .] [--granularity auto|file]` — draft specs from existing code: a `generate: false` constitution plus contract/behavior specs inheriting from it, all `status: draft`, never overwriting
 
 ### React UI (`ui/` + `api.py`)
 
@@ -108,6 +108,7 @@ depends_on:                     # optional; cross-branch dependencies
 language: typescript            # optional; overrides config default
 acceptance:                     # optional; hand-written tests the code must pass
   - tests/acceptance/test_login.py
+generate: false                 # optional; context-only spec, never built (e.g. a constitution)
 ---
 
 ## Description
@@ -123,4 +124,4 @@ Fields that do **not** affect the hash: `status`, `hash` (editorial-only).
 - No narrative comments — only add a comment when the *why* is non-obvious.
 - Python 3.10+ throughout; Ruff enforces style.
 - Tests use `pytest`, `unittest.mock`, and Click's `CliRunner`. Mock at the boundary of external calls (LLM clients, file I/O) rather than deep internals.
-- `extract_json(text)` in `llm.py` handles LLM responses that wrap JSON in markdown fences or append prose — use it whenever parsing agent output.
+- Agent output uses tagged blocks parsed by `agents/fileblocks.py` and `agents/stages.py`; never ask a model to put code or spec text inside JSON. `llm.py:extract_json()` remains only for small JSON replies (spec review, legacy review skills).

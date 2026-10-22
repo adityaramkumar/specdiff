@@ -44,7 +44,15 @@ def parse_spec_file(file_path: Path) -> SpecNode:
         depends_on=raw_depends,
         language=meta.get("language"),
         acceptance=_string_list(meta, "acceptance", file_path),
+        generate=_bool(meta, "generate", file_path, default=True),
     )
+
+
+def _bool(meta: dict, key: str, file_path: Path, *, default: bool) -> bool:
+    value = meta.get(key, default)
+    if not isinstance(value, bool):
+        raise ValueError(f"{file_path}: '{key}' must be true or false, got {value!r}")
+    return value
 
 
 def _string_list(meta: dict, key: str, file_path: Path) -> list[str]:

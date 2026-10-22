@@ -1019,3 +1019,27 @@ class TestValidateAcceptance:
         result = CliRunner().invoke(cli, ["validate"])
         assert result.exit_code == 1
         assert "acceptance test 'tests/acc.py' not found" in result.output
+
+
+class TestContextSpecsInCli:
+    def test_context_spec_is_listed_and_skipped_but_reaches_child_prompt(
+        self, tmp_path, monkeypatch, fake_llm
+    ):
+        proj = _setup_project(tmp_path, [])
+        specs = proj / ".specdiff"
+        (specs / "constitution.spec.md").write_text(
+            "---\nid: constitution\nversion: '1'\nstatus: approved\ngenerate: false\n---\n"
+            "All errors are JSON objects.\n"
+        )
+        (specs / "api.spec.md").write_text(
+            "---\nid: api\nversion: '1'\nstatus: approved\nparent: constitution\n---\nAn API.\n"
+        )
+        monkeypatch.chdir(proj)
+
+        status = CliRunner().invoke(cli, ["status"], catch_exceptions=False).output
+        assert "constitution" in status and "context" in status
+
+        result = CliRunner().invoke(cli, ["build"], catch_exceptions=False)
+        assert result.exit_code == 0, result.output
+        assert {node for node, _ in fake_llm.calls} == {"api"}
+        assert "All errors are JSON objects." in fake_llm.prompts[0]

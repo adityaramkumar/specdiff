@@ -66,6 +66,8 @@ depends_on:
 
 Everything below the frontmatter is your spec -- prose, code snippets, whatever communicates the intent.
 
+Set `generate: false` for a spec that only provides context, such as a constitution of project-wide conventions or a list of security constraints. It is never built, but its text reaches every spec that names it as `parent` or in `depends_on`, and editing it marks them stale.
+
 ### Acceptance tests
 
 Generated tests are written by the same model that writes the code, so passing them only shows the model agrees with itself. To pin down behavior yourself, write the tests and list them on the spec:
@@ -99,21 +101,12 @@ These are snapshots produced by an earlier version of the pipeline, kept as a re
 
 ## How to Retrofit an Existing Codebase
 
-Specdiff is designed for spec-first development, but you can bootstrap it onto a larger, existing project using the Graph UI.
+1. Run `specdiff init`, then point `output_dir` and `test_command` at your project.
+2. Run `specdiff extract --source <your code>`. It writes a `constitution` spec summarising the codebase's architecture and conventions, plus contract and behavior specs that inherit from it. Everything it writes is a **draft**, and it never overwrites an existing spec.
+3. Read each draft. Fix what the model misread, add acceptance tests for behavior you care about, then set `status: approved`.
+4. Run `specdiff ui` to see the graph as you link specs together.
 
-1. **Initialize Config:** Create a `.specdiff/config.yaml` at your project root.
-2. **Reverse-Engineer Specs:** Use an AI coding assistant (like Cursor, Copilot, or Claude) to read your existing code and generate Markdown specs for your core features. Place these in `.specdiff/behaviors/` or `.specdiff/contracts/`.
-3. **Link the Graph:** Ensure each generated spec has proper YAML frontmatter with `id`, `version`, and crucially, a `depends_on` array linking it to other specs.
-    ```yaml
-    ---
-    id: behaviors/user_authentication
-    version: 1.0.0
-    parent: behaviors
-    depends_on:
-      - contracts/database/users_table
-    ---
-    ```
-4. **Visualize:** Run `specdiff ui` and open `localhost:8000`. As you add more spec files and link them, the interactive graph will automatically update, allowing you to map out your system architecture visually before you start using Specdiff for future code generation.
+Specdiff never overwrites a file it did not generate, so building an approved spec will not clobber the existing code it describes. Use specs for new and rewritten parts first, and retire the old code for a spec once its generated replacement passes.
 
 ## Commands
 
@@ -252,19 +245,9 @@ $ specdiff validate
 Validated 5 spec(s). No issues found.
 ```
 
-### `specdiff extract [source]`
+### `specdiff extract [--source DIR] [--granularity auto|file]`
 
-Read existing code and generate spec files. This is useful for reverse-engineering an existing codebase into Specdiff specs.
-
-```
-$ specdiff extract .
-Analyzing codebase in ....
-Sending payload to LLM to extract contracts...
-  Created contracts/models/user.spec.md
-Extracting behaviors and dependencies...
-  Created behaviors/auth/login.spec.md
-Extraction complete! Initialized 2 specs in .specdiff.
-```
+Draft specs from existing code: a context-only `constitution` spec with the codebase's conventions, then contract and behavior specs that inherit from it (`--granularity file` writes one spec per source file instead). All of them start as `status: draft`, so nothing is built until you review and approve them. Existing spec files are never overwritten.
 
 ## Configuration
 
