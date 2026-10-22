@@ -1,52 +1,64 @@
+"""Draft specs from an existing codebase.
+
+Everything extract writes is a draft: a model's reading of code needs a human
+review before it drives generation.
+"""
+
 from __future__ import annotations
 
 import os
 from pathlib import Path
 
 import click
+import frontmatter
 
-from specdiff.llm import extract_json, generate_content
+from specdiff.agents import fileblocks
+from specdiff.build.files import resolve_output_path
+from specdiff.llm import generate_content
 from specdiff.types import SpecdiffConfig
 
+CONSTITUTION_ID = "constitution"
 _EXTENSIONS = (".py", ".js", ".ts", ".go", ".java", ".json", ".yaml", ".md")
-_IGNORE_DIRS = {
-    ".git",
-    "node_modules",
-    "venv",
-    ".venv",
-    "__pycache__",
-    ".specdiff",
-    "ui",
-    "ui_dist",
-    "dist",
-    "build",
-}
+_IGNORE_DIRS = {".git", "node_modules", "venv", ".venv", "__pycache__", ".specdiff", "ui",
+                "ui_dist", "dist", "build"}  # fmt: skip
+
+_SPEC_FORMAT = """
+Return each spec as a block whose path ends in .spec.md:
+
+<file path="{folder}/<name>.spec.md">
+---
+id: {folder}/<name>
+version: "1.0.0"
+status: draft{extra_frontmatter}
+---
+
+The spec body in Markdown: behavior, inputs and outputs, exact error messages.
+</file>
+"""
 
 
 def generate_specs_from_code(
-    src_dir: Path,
-    specs_dir: Path,
-    config: SpecdiffConfig,
-    granularity: str = "auto",
+    src_dir: Path, specs_dir: Path, config: SpecdiffConfig, granularity: str = "auto"
 ) -> None:
-    """Read a codebase and use the LLM to write spec files."""
+    """Read a codebase and write draft spec files for it."""
     click.echo(f"Analyzing codebase in {src_dir}...")
-
-    code_files = _collect_source_files(src_dir)
-    if not code_files:
+    code = {f["path"]: f["content"] for f in _collect_source_files(src_dir)}
+    if not code:
         click.echo(f"No valid source files found in {src_dir}.")
         return
+    code_text = fileblocks.render(code)
 
-    code_text = ""
-    for cf in code_files:
-        code_text += f"\n--- FILE: {cf['path']} ---\n{cf['content']}\n"
-
-    _generate_migration_skill(config.model, code_text, specs_dir)
-
+    has_constitution = _write_constitution(config.model, code_text, specs_dir)
+    parent = CONSTITUTION_ID if has_constitution else None
     if granularity == "file":
-        _extract_file_by_file(config.model, code_files, specs_dir)
+        written = _extract_file_by_file(config.model, code, specs_dir, parent)
     else:
-        _extract_auto(config.model, code_text, specs_dir)
+        written = _extract_auto(config.model, code_text, specs_dir, parent)
+
+    click.echo(
+        f"\nWrote {len(written)} draft spec(s). Review each one, then set `status: approved` "
+        "on the ones that capture your intent."
+    )
 
 
 def _collect_source_files(src_dir: Path) -> list[dict[str, str]]:
@@ -58,192 +70,106 @@ def _collect_source_files(src_dir: Path) -> list[dict[str, str]]:
                 path = Path(root) / file
                 try:
                     content = path.read_text("utf-8")
-                    code_files.append(
-                        {
-                            "path": str(path.relative_to(src_dir)),
-                            "content": content,
-                        }
-                    )
                 except UnicodeDecodeError:
-                    pass
+                    continue
+                code_files.append({"path": str(path.relative_to(src_dir)), "content": content})
     return code_files
 
 
-def _generate_migration_skill(model: str, code_text: str, specs_dir: Path) -> None:
-    click.echo("Generating migration.skill.md (Architectural context)...")
-    skill_prompt = (
-        "You are an expert software architect. Analyze the following codebase "
-        "and write a markdown document detailing its architectural patterns, "
-        "domain boundaries, and coding conventions. This document will be used "
-        "to instruct AI agents on how to migrate this logic to a new codebase, "
-        "so be extremely specific about how the system maps inputs to outputs, "
-        "external services, and abstractions.\n\n"
-        "Do NOT include markdown language fences around your output, "
-        "just raw markdown.\n\n"
-        f"Codebase:\n{code_text}"
+def _write_constitution(model: str, code_text: str, specs_dir: Path) -> bool:
+    """Summarise project-wide conventions as a context-only spec the others inherit."""
+    path = specs_dir / f"{CONSTITUTION_ID}.spec.md"
+    if path.exists():
+        click.echo(f"  Kept existing {path.name}")
+        return True
+    click.echo("Summarising architecture and conventions...")
+    prompt = (
+        "Describe this codebase's architecture and conventions for agents that will "
+        "regenerate parts of it: module layout, naming, error handling, data formats, "
+        "external services, and patterns every module follows. Write plain Markdown, "
+        "no fences.\n\n" + code_text
     )
     try:
-        skill_resp = generate_content(model=model, contents=skill_prompt)
-        content = skill_resp.text
-        if content.startswith("```markdown") or content.startswith("```"):
-            content = content.split("\n", 1)[1].rsplit("\n", 1)[0]
+        body = generate_content(model=model, contents=prompt).text.strip()
+    except Exception as exc:
+        click.echo(f"  Warning: could not summarise architecture: {exc}", err=True)
+        return False
+    post = frontmatter.Post(
+        body, id=CONSTITUTION_ID, version="1.0.0", status="draft", generate=False
+    )
+    specs_dir.mkdir(parents=True, exist_ok=True)
+    path.write_text(frontmatter.dumps(post) + "\n", "utf-8")
+    click.echo(f"  Created {path.name}")
+    return True
 
-        skill_path = specs_dir / "skills" / "migration.skill.md"
-        skill_path.parent.mkdir(parents=True, exist_ok=True)
-        skill_path.write_text(content.strip(), "utf-8")
-        click.echo(f"  Created {skill_path.relative_to(specs_dir.parent)}")
-    except Exception as e:
-        click.echo(f"Warning: Failed to generate migration.skill.md: {e}")
 
+def _extract_auto(model: str, code_text: str, specs_dir: Path, parent: str | None) -> list[str]:
+    click.echo("Extracting contracts...")
+    prompt = (
+        "Extract this codebase's data models, schemas and API definitions as contract "
+        "specs, one per coherent contract.\n" + _SPEC_FORMAT.format(folder="contracts",
+        extra_frontmatter="") + "\nCodebase:\n" + code_text
+    )  # fmt: skip
+    contracts = _write_specs(generate_content(model=model, contents=prompt).text, specs_dir, parent)
 
-def _extract_auto(model: str, code_text: str, specs_dir: Path) -> None:
-    click.echo("Sending payload to LLM to extract contracts...")
-
-    contract_prompt = f"""
-You are an expert systems architect. Analyze the following codebase and extract
-its core data models, schemas, and API definitions into Markdown specs.
-
-The output must be a JSON array of objects, where each object has a 'path'
-(under 'contracts/') and 'content' (the markdown spec with YAML frontmatter).
-
-Required Frontmatter for each spec:
----
-id: contracts/<name>
-version: 1.0.0
-status: approved
----
-
-Codebase:
-{code_text}
-
-Output ONLY valid JSON containing the array of spec objects.
-"""
-
-    response = generate_content(model=model, contents=contract_prompt)
-
-    try:
-        contracts = extract_json(response.text)
-    except Exception as e:
-        raise click.ClickException(
-            f"Failed to parse contracts from LLM: {e}\n\nResponse:\n{response.text}"
-        ) from e
-
-    if not isinstance(contracts, list) or not all(
-        isinstance(c, dict) and "path" in c and "content" in c for c in contracts
-    ):
-        raise click.ClickException(
-            "LLM returned unexpected structure for contracts "
-            "(expected a list of {path, content} objects)."
-        )
-
-    for c in contracts:
-        spec_path = specs_dir / c["path"]
-        if not spec_path.name.endswith(".spec.md"):
-            spec_path = spec_path.with_name(spec_path.name + ".spec.md")
-        spec_path.parent.mkdir(parents=True, exist_ok=True)
-        spec_path.write_text(c["content"], "utf-8")
-        click.echo(f"  Created {c['path']}")
-
-    click.echo("Extracting behaviors and dependencies...")
-
-    contract_summary = "\n".join([f"- {c['path']}" for c in contracts])
-
-    behavior_prompt = f"""
-You are an expert systems architect. Analyze the codebase again.
-Extract the business logic, features, and workflows into Markdown specs.
-
-You MUST link these behaviors to the contracts you generated earlier
-by using the `depends_on` array in the frontmatter.
-
-Existing Contracts:
-{contract_summary}
-
-Required Frontmatter for each spec:
----
-id: behaviors/<name>
-version: 1.0.0
-status: approved
-depends_on:
-  - contracts/<relevant_contract>
----
-
-Codebase:
-{code_text}
-
-Output ONLY valid JSON containing the array of spec objects
-(path under 'behaviors/', and content).
-"""
-
-    response2 = generate_content(model=model, contents=behavior_prompt)
-
-    try:
-        behaviors = extract_json(response2.text)
-    except Exception as e:
-        raise click.ClickException(
-            f"Failed to parse behaviors from LLM: {e}\n\nResponse:\n{response2.text}"
-        ) from e
-
-    if not isinstance(behaviors, list) or not all(
-        isinstance(b, dict) and "path" in b and "content" in b for b in behaviors
-    ):
-        raise click.ClickException(
-            "LLM returned unexpected structure for behaviors "
-            "(expected a list of {path, content} objects)."
-        )
-
-    for b in behaviors:
-        spec_path = specs_dir / b["path"]
-        if not spec_path.name.endswith(".spec.md"):
-            spec_path = spec_path.with_name(spec_path.name + ".spec.md")
-        spec_path.parent.mkdir(parents=True, exist_ok=True)
-        spec_path.write_text(b["content"], "utf-8")
-        click.echo(f"  Created {b['path']}")
-
-    total = len(contracts) + len(behaviors)
-    click.echo(f"\nExtraction complete! Initialized {total} specs in {specs_dir}.")
+    click.echo("Extracting behaviors...")
+    listing = "\n".join(f"- {c}" for c in contracts) or "- (none)"
+    prompt = (
+        "Extract this codebase's features and workflows as behavior specs. Link each "
+        "to the contracts it uses with depends_on.\n\nContracts:\n" + listing + "\n"
+        + _SPEC_FORMAT.format(folder="behaviors", extra_frontmatter="\ndepends_on:\n"
+        "  - contracts/<contract it uses>") + "\nCodebase:\n" + code_text
+    )  # fmt: skip
+    behaviors = _write_specs(generate_content(model=model, contents=prompt).text, specs_dir, parent)
+    return contracts + behaviors
 
 
 def _extract_file_by_file(
-    model: str,
-    code_files: list[dict[str, str]],
-    specs_dir: Path,
-) -> None:
-    click.echo(f"Extracting 1:1 specs for {len(code_files)} files...")
-    all_paths = [cf["path"] for cf in code_files]
-    paths_list = "\n".join([f"- {p}" for p in all_paths])
-
-    for cf in code_files:
-        click.echo(f"  Processing {cf['path']}...")
-
+    model: str, code: dict[str, str], specs_dir: Path, parent: str | None
+) -> list[str]:
+    click.echo(f"Extracting one spec per file for {len(code)} files...")
+    listing = "\n".join(f"- {p}" for p in code)
+    written: list[str] = []
+    for path, content in code.items():
+        click.echo(f"  Processing {path}...")
         prompt = (
-            "You are an expert systems architect. Convert the following "
-            "source file into a single Specdiff Markdown spec.\n\n"
-            f"Project File List (for reference when creating depends_on links):\n"
-            f"{paths_list}\n\n"
-            f"Source File: {cf['path']}\nContent:\n```\n{cf['content']}\n```\n\n"
-            "The output MUST be a JSON object with 'path' and 'content' "
-            "(the markdown spec with YAML frontmatter).\n"
-            "Rules:\n"
-            "1. ONLY output the raw JSON object. Do not wrap it in markdown.\n"
-            "2. Use the Project File List to infer valid dependencies "
-            "(prefix them with behaviors/).\n"
+            f"Write one behavior spec for the source file {path}.\n"
+            + _SPEC_FORMAT.format(folder="behaviors", extra_frontmatter="")
+            + f"\nOther files in the project:\n{listing}\n\n"
+            + fileblocks.render({path: content})
         )
-        resp = None
         try:
-            resp = generate_content(model=model, contents=prompt)
-            data = extract_json(resp.text)
+            written += _write_specs(generate_content(model=model, contents=prompt).text,
+                                    specs_dir, parent)  # fmt: skip
+        except Exception as exc:
+            click.echo(f"    Failed to process {path}: {exc}", err=True)
+    return written
 
-            if isinstance(data, list) and len(data) > 0:
-                data = data[0]
 
-            if not isinstance(data, dict) or "path" not in data or "content" not in data:
-                raise ValueError("LLM returned unexpected structure (expected {path, content}).")
-
-            out_path = specs_dir / data["path"]
-            out_path.parent.mkdir(parents=True, exist_ok=True)
-            out_path.write_text(data["content"], "utf-8")
-        except Exception as e:
-            resp_text = resp.text if resp is not None else ""
-            click.echo(f"    Failed to process {cf['path']}: {e}\n{resp_text}")
-
-    click.echo("File-by-file extraction complete!")
+def _write_specs(reply: str, specs_dir: Path, parent: str | None) -> list[str]:
+    """Write each spec block as a draft. Returns the IDs written; never overwrites."""
+    written: list[str] = []
+    for rel, content in fileblocks.parse(reply).files.items():
+        if not rel.endswith(".spec.md"):
+            rel += ".spec.md"
+        try:
+            path = resolve_output_path(str(specs_dir), rel)
+        except ValueError as exc:
+            click.echo(f"  Skipped {rel}: {exc}", err=True)
+            continue
+        post = frontmatter.loads(content)
+        spec_id = post.metadata.get("id")
+        if not spec_id:
+            click.echo(f"  Skipped {rel}: no id in frontmatter", err=True)
+            continue
+        if path.exists():
+            click.echo(f"  Kept existing {rel}")
+            continue
+        post.metadata["status"] = "draft"
+        if parent and spec_id != parent:
+            post.metadata.setdefault("parent", parent)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(frontmatter.dumps(post) + "\n", "utf-8")
+        written.append(spec_id)
+        click.echo(f"  Created {rel}")
+    return written

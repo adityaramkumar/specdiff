@@ -18,13 +18,16 @@ class NodeState:
     fingerprint: str
     reasons: list[str] = field(default_factory=list)
     is_new: bool = False
+    context: bool = False
 
     @property
     def stale(self) -> bool:
-        return self.is_new or bool(self.reasons)
+        return not self.context and (self.is_new or bool(self.reasons))
 
     @property
     def label(self) -> str:
+        if self.context:
+            return "context"
         return "new" if self.is_new else "stale" if self.reasons else "current"
 
 
@@ -61,7 +64,9 @@ def compute_states(
 
         state = NodeState(inputs=inputs, fingerprint=_digest(inputs))
         entry = hm.nodes.get(nid)
-        if entry is None:
+        if not node.generate:
+            state.context = True
+        elif entry is None:
             state.is_new = True
         elif entry.inputs:
             state.reasons = _diff_reasons(entry.inputs, inputs)

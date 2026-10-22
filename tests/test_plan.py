@@ -148,3 +148,22 @@ class TestAcceptanceFingerprint:
         node.acceptance = ["test_acc.py"]
         _, states = _states([node], hm)
         assert "acceptance test test_acc.py added" in states["a"].reasons
+
+
+class TestContextSpecs:
+    def test_context_spec_is_never_built_but_changes_reach_children(self):
+        constitution = _node("constitution")
+        constitution.generate = False
+        nodes = [constitution, _node("child", parent="constitution")]
+        hm = _built(nodes)
+        del hm.nodes["constitution"]
+
+        graph, states = _states(nodes, hm)
+        assert states["constitution"].label == "context"
+        assert plan_build(graph, states).order == []
+
+        edited = _node("constitution", h="new")
+        edited.generate = False
+        graph, states = _states([edited, nodes[1]], hm)
+        assert states["child"].reasons == ["constitution changed"]
+        assert plan_build(graph, states).order == ["child"]

@@ -190,3 +190,20 @@ class TestAcceptanceField:
     def test_string_rejected(self, tmp_path):
         with pytest.raises(ValueError, match="'acceptance' must be a list of strings"):
             parse_spec_file(self._write(tmp_path, "acceptance: tests/x.py\n"))
+
+
+class TestGenerateField:
+    def _write(self, tmp_path, extra: str):
+        path = tmp_path / "a.spec.md"
+        path.write_text(f"---\nid: a\nversion: '1'\nstatus: approved\n{extra}---\nBody\n")
+        return path
+
+    def test_defaults_to_true(self, tmp_path):
+        assert parse_spec_file(self._write(tmp_path, "")).generate is True
+
+    def test_false_marks_context_spec(self, tmp_path):
+        assert parse_spec_file(self._write(tmp_path, "generate: false\n")).generate is False
+
+    def test_non_bool_rejected(self, tmp_path):
+        with pytest.raises(ValueError, match="'generate' must be true or false"):
+            parse_spec_file(self._write(tmp_path, "generate: maybe\n"))

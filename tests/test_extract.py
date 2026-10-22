@@ -1,12 +1,11 @@
 from __future__ import annotations
 
-import json
 import os
 from unittest.mock import MagicMock, patch
 
-import pytest
-
-from specdiff.extract import _collect_source_files, _extract_auto, _extract_file_by_file
+from specdiff.extract import CONSTITUTION_ID, _collect_source_files, generate_specs_from_code
+from specdiff.parser import parse_spec_file
+from specdiff.types import SpecdiffConfig
 
 
 def _mock_response(text: str) -> MagicMock:
@@ -139,174 +138,98 @@ class TestCollectSourceFiles:
         assert not any(".specdiff" in p for p in paths)
 
 
+def _spec(path: str, spec_id: str, body: str = "Body.", extra: str = "") -> str:
+    return (
+        f'<file path="{path}">\n---\nid: {spec_id}\nversion: "1.0.0"\nstatus: approved\n'
+        f"{extra}---\n\n{body}\n</file>\n"
+    )
+
+
+def _project(tmp_path):
+    src = tmp_path / "app"
+    src.mkdir()
+    (src / "users.py").write_text("class User: ...\n")
+    specs = tmp_path / ".specdiff"
+    specs.mkdir()
+    return src, specs
+
+
+def _run(src, specs, replies, granularity="auto"):
+    with patch("specdiff.extract.generate_content") as gen:
+        gen.side_effect = [_mock_response(r) for r in replies]
+        generate_specs_from_code(src, specs, SpecdiffConfig(), granularity)
+    return gen
+
+
 class TestExtractAuto:
-    def test_writes_contracts_and_behaviors(self, tmp_path):
-        contracts = [{"path": "contracts/users", "content": "---\nid: contracts/users\n---"}]
-        behaviors = [
-            {"path": "behaviors/auth/login", "content": "---\nid: behaviors/auth/login\n---"}
-        ]
-        with patch("specdiff.extract.generate_content") as mock_gen:
-            mock_gen.side_effect = [
-                _mock_response(json.dumps(contracts)),
-                _mock_response(json.dumps(behaviors)),
+    def test_writes_constitution_contracts_and_behaviors_as_drafts(self, tmp_path):
+        src, specs = _project(tmp_path)
+        deps = "depends_on:\n- contracts/users\n"
+        _run(src, specs, [
+            "Modules are flat; errors are ValueError.",
+            _spec("contracts/users.spec.md", "contracts/users", "```python\nx = 'a\\nb'\n```"),
+            _spec("behaviors/signup.spec.md", "behaviors/signup", extra=deps),
+        ])  # fmt: skip
+
+        constitution = parse_spec_file(specs / "constitution.spec.md")
+        assert constitution.generate is False and constitution.status == "draft"
+        assert "errors are ValueError" in constitution.content
+
+        users = parse_spec_file(specs / "contracts" / "users.spec.md")
+        assert users.status == "draft" and users.parent == CONSTITUTION_ID
+        assert "x = 'a\\nb'" in users.content
+        signup = parse_spec_file(specs / "behaviors" / "signup.spec.md")
+        assert signup.depends_on == ["contracts/users"]
+
+    def test_contract_ids_are_listed_in_behavior_prompt(self, tmp_path):
+        src, specs = _project(tmp_path)
+        gen = _run(src, specs, ["c", _spec("contracts/users.spec.md", "contracts/users"), ""])
+        assert "- contracts/users" in gen.call_args_list[2].kwargs["contents"]
+
+    def test_existing_specs_are_never_overwritten(self, tmp_path):
+        src, specs = _project(tmp_path)
+        (specs / "contracts").mkdir()
+        (specs / "contracts" / "users.spec.md").write_text("mine")
+        (specs / "constitution.spec.md").write_text("mine too")
+        gen = _run(src, specs, [_spec("contracts/users.spec.md", "contracts/users"), ""])
+
+        assert (specs / "contracts" / "users.spec.md").read_text() == "mine"
+        assert (specs / "constitution.spec.md").read_text() == "mine too"
+        assert gen.call_count == 2
+
+    def test_paths_outside_specs_dir_are_rejected(self, tmp_path):
+        src, specs = _project(tmp_path)
+        _run(src, specs, ["c", _spec("../evil.spec.md", "evil"), ""])
+        assert not (tmp_path / "evil.spec.md").exists()
+
+    def test_missing_extension_added_and_blocks_without_id_skipped(self, tmp_path):
+        src, specs = _project(tmp_path)
+        no_id = '<file path="contracts/x.spec.md">\n---\nversion: "1"\n---\nx\n</file>'
+        _run(src, specs, ["c", _spec("contracts/orders", "contracts/orders") + no_id, ""])
+        assert (specs / "contracts" / "orders.spec.md").exists()
+        assert not (specs / "contracts" / "x.spec.md").exists()
+
+    def test_constitution_failure_still_extracts_without_parent(self, tmp_path):
+        src, specs = _project(tmp_path)
+        with patch("specdiff.extract.generate_content") as gen:
+            gen.side_effect = [
+                RuntimeError("timeout"),
+                _mock_response(_spec("contracts/users.spec.md", "contracts/users")),
+                _mock_response(""),
             ]
-            _extract_auto("gemini-2.5-flash", "code text", tmp_path)
-
-        assert (tmp_path / "contracts" / "users.spec.md").exists()
-        assert (tmp_path / "behaviors" / "auth" / "login.spec.md").exists()
-
-    def test_does_not_double_add_spec_md_extension(self, tmp_path):
-        contracts = [
-            {"path": "contracts/users.spec.md", "content": "---\nid: contracts/users\n---"}
-        ]
-        with patch("specdiff.extract.generate_content") as mock_gen:
-            mock_gen.side_effect = [
-                _mock_response(json.dumps(contracts)),
-                _mock_response("[]"),
-            ]
-            _extract_auto("gemini-2.5-flash", "code text", tmp_path)
-
-        assert (tmp_path / "contracts" / "users.spec.md").exists()
-        assert not (tmp_path / "contracts" / "users.spec.md.spec.md").exists()
-
-    def test_contract_parse_failure_raises(self, tmp_path):
-        from click import ClickException
-
-        with patch("specdiff.extract.generate_content") as mock_gen:
-            mock_gen.return_value = _mock_response("not json at all")
-            with pytest.raises(ClickException, match="Failed to parse contracts"):
-                _extract_auto("gemini-2.5-flash", "code text", tmp_path)
-
-    def test_contract_wrong_type_raises(self, tmp_path):
-        from click import ClickException
-
-        with patch("specdiff.extract.generate_content") as mock_gen:
-            mock_gen.return_value = _mock_response('{"not": "a list"}')
-            with pytest.raises(ClickException, match="unexpected structure for contracts"):
-                _extract_auto("gemini-2.5-flash", "code text", tmp_path)
-
-    def test_contract_missing_path_field_raises(self, tmp_path):
-        from click import ClickException
-
-        with patch("specdiff.extract.generate_content") as mock_gen:
-            mock_gen.return_value = _mock_response('[{"content": "no path field"}]')
-            with pytest.raises(ClickException, match="unexpected structure for contracts"):
-                _extract_auto("gemini-2.5-flash", "code text", tmp_path)
-
-    def test_behavior_parse_failure_raises(self, tmp_path):
-        from click import ClickException
-
-        contracts = [{"path": "contracts/users", "content": "---\nid: contracts/users\n---"}]
-        with patch("specdiff.extract.generate_content") as mock_gen:
-            mock_gen.side_effect = [
-                _mock_response(json.dumps(contracts)),
-                _mock_response("not json"),
-            ]
-            with pytest.raises(ClickException, match="Failed to parse behaviors"):
-                _extract_auto("gemini-2.5-flash", "code text", tmp_path)
-
-    def test_behavior_wrong_type_raises(self, tmp_path):
-        from click import ClickException
-
-        contracts = [{"path": "contracts/users", "content": "---\nid: contracts/users\n---"}]
-        with patch("specdiff.extract.generate_content") as mock_gen:
-            mock_gen.side_effect = [
-                _mock_response(json.dumps(contracts)),
-                _mock_response('"just a string"'),
-            ]
-            with pytest.raises(ClickException, match="unexpected structure for behaviors"):
-                _extract_auto("gemini-2.5-flash", "code text", tmp_path)
-
-    def test_makes_exactly_two_llm_calls(self, tmp_path):
-        with patch("specdiff.extract.generate_content") as mock_gen:
-            mock_gen.side_effect = [_mock_response("[]"), _mock_response("[]")]
-            _extract_auto("my-model", "code text", tmp_path)
-        assert mock_gen.call_count == 2
-
-    def test_contract_paths_included_in_behavior_prompt(self, tmp_path):
-        contracts = [{"path": "contracts/users", "content": "---\nid: contracts/users\n---"}]
-        with patch("specdiff.extract.generate_content") as mock_gen:
-            mock_gen.side_effect = [
-                _mock_response(json.dumps(contracts)),
-                _mock_response("[]"),
-            ]
-            _extract_auto("my-model", "code text", tmp_path)
-        behavior_prompt = mock_gen.call_args_list[1].kwargs["contents"]
-        assert "contracts/users" in behavior_prompt
-
-    def test_writes_file_content_verbatim(self, tmp_path):
-        body = "---\nid: contracts/users\n---\n# Users spec body"
-        contracts = [{"path": "contracts/users", "content": body}]
-        with patch("specdiff.extract.generate_content") as mock_gen:
-            mock_gen.side_effect = [_mock_response(json.dumps(contracts)), _mock_response("[]")]
-            _extract_auto("gemini-2.5-flash", "code text", tmp_path)
-        assert (tmp_path / "contracts" / "users.spec.md").read_text() == body
+            generate_specs_from_code(src, specs, SpecdiffConfig())
+        assert parse_spec_file(specs / "contracts" / "users.spec.md").parent is None
 
 
 class TestExtractFileByFile:
-    def test_writes_spec_for_each_file(self, tmp_path):
-        code_files = [{"path": "src/auth.py", "content": "def login(): pass"}]
-        spec = {"path": "behaviors/auth.spec.md", "content": "---\nid: behaviors/auth\n---"}
-        with patch("specdiff.extract.generate_content") as mock_gen:
-            mock_gen.return_value = _mock_response(json.dumps(spec))
-            _extract_file_by_file("gemini-2.5-flash", code_files, tmp_path)
-        assert (tmp_path / "behaviors" / "auth.spec.md").exists()
-
-    def test_one_call_per_file(self, tmp_path):
-        code_files = [
-            {"path": "a.py", "content": "x = 1"},
-            {"path": "b.py", "content": "y = 2"},
-        ]
-        spec_a = {"path": "behaviors/a.spec.md", "content": "---\nid: behaviors/a\n---"}
-        spec_b = {"path": "behaviors/b.spec.md", "content": "---\nid: behaviors/b\n---"}
-        with patch("specdiff.extract.generate_content") as mock_gen:
-            mock_gen.side_effect = [
-                _mock_response(json.dumps(spec_a)),
-                _mock_response(json.dumps(spec_b)),
-            ]
-            _extract_file_by_file("gemini-2.5-flash", code_files, tmp_path)
-        assert mock_gen.call_count == 2
-        assert (tmp_path / "behaviors" / "a.spec.md").exists()
-        assert (tmp_path / "behaviors" / "b.spec.md").exists()
-
-    def test_failed_file_is_skipped_others_continue(self, tmp_path):
-        code_files = [
-            {"path": "bad.py", "content": "x = 1"},
-            {"path": "good.py", "content": "y = 2"},
-        ]
-        spec_good = {"path": "behaviors/good.spec.md", "content": "---\nid: behaviors/good\n---"}
-        with patch("specdiff.extract.generate_content") as mock_gen:
-            mock_gen.side_effect = [
-                _mock_response("not json"),
-                _mock_response(json.dumps(spec_good)),
-            ]
-            _extract_file_by_file("gemini-2.5-flash", code_files, tmp_path)
-        assert (tmp_path / "behaviors" / "good.spec.md").exists()
-
-    def test_list_response_unwrapped_to_first_element(self, tmp_path):
-        code_files = [{"path": "auth.py", "content": "def login(): pass"}]
-        spec = [{"path": "behaviors/auth.spec.md", "content": "---\nid: behaviors/auth\n---"}]
-        with patch("specdiff.extract.generate_content") as mock_gen:
-            mock_gen.return_value = _mock_response(json.dumps(spec))
-            _extract_file_by_file("gemini-2.5-flash", code_files, tmp_path)
-        assert (tmp_path / "behaviors" / "auth.spec.md").exists()
-
-    def test_missing_path_field_skips_file_without_raising(self, tmp_path):
-        code_files = [{"path": "auth.py", "content": "def login(): pass"}]
-        bad_data = {"content": "no path field"}
-        with patch("specdiff.extract.generate_content") as mock_gen:
-            mock_gen.return_value = _mock_response(json.dumps(bad_data))
-            _extract_file_by_file("gemini-2.5-flash", code_files, tmp_path)
-
-    def test_all_file_paths_included_in_every_prompt(self, tmp_path):
-        code_files = [
-            {"path": "src/auth.py", "content": "def login(): pass"},
-            {"path": "src/models.py", "content": "class User: pass"},
-        ]
-        spec = {"path": "behaviors/auth.spec.md", "content": "---\nid: behaviors/auth\n---"}
-        with patch("specdiff.extract.generate_content") as mock_gen:
-            mock_gen.return_value = _mock_response(json.dumps(spec))
-            _extract_file_by_file("gemini-2.5-flash", code_files, tmp_path)
-        prompt = mock_gen.call_args_list[0].kwargs["contents"]
-        assert "src/auth.py" in prompt
-        assert "src/models.py" in prompt
+    def test_one_spec_per_file(self, tmp_path):
+        src, specs = _project(tmp_path)
+        (src / "orders.py").write_text("x = 1\n")
+        gen = _run(src, specs, [
+            "c",
+            _spec("behaviors/users.spec.md", "behaviors/users"),
+            _spec("behaviors/orders.spec.md", "behaviors/orders"),
+        ], granularity="file")  # fmt: skip
+        assert gen.call_count == 3
+        assert (specs / "behaviors" / "users.spec.md").exists()
+        assert (specs / "behaviors" / "orders.spec.md").exists()
